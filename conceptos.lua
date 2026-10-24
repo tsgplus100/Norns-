@@ -18,15 +18,28 @@
 --   espeak-ng sox)
 --
 -- las palabras están en
--- lib/temas.lua: ¡edítalas!
+-- lib/temas.lua (español) y
+-- lib/themes_en.lua (inglés):
+-- ¡edítalas!
 
-local temas = include("lib/temas")
+local IDIOMAS = {
+  include("lib/temas"),
+  include("lib/themes_en"),
+}
 local frases = include("lib/frases")
+
+-- las palabras del idioma elegido en PARAMETERS
+local function temas()
+  return IDIOMAS[params:get("idioma")]
+end
 
 local DATA_DIR = _path.data .. "conceptos/"
 local AUDIO_DIR = _path.audio .. "conceptos/"
 
-local VOCES = { "es", "es-419" }
+-- "en" es inglés británico, "en-us" estadounidense
+local VOCES = { "es", "es-419", "en", "en-us" }
+-- la voz que se pone sola al cambiar de idioma
+local VOZ_DE_IDIOMA = { 2, 4 }
 local VELOCIDAD_NOMBRES = { "reversa", "0.5x", "0.75x", "1x", "1.5x", "2x" }
 local VELOCIDADES = { -1, 0.5, 0.75, 1, 1.5, 2 }
 local INTERVALO_NOMBRES = { "1/2 tiempo", "1 tiempo", "2 tiempos", "1 compás",
@@ -118,7 +131,7 @@ local function decir()
   end
 
   ocupado = true
-  frase = frases.generar(temas, params:get("tema"), params:get("mezclar") == 2)
+  frase = frases.generar(temas(), params:get("tema"), params:get("mezclar") == 2)
   estado = "pensando..."
   redraw()
 
@@ -147,16 +160,25 @@ end
 -- parámetros
 -- ---------------------------------------------------------------------------
 
-local function nombres_de_temas()
-  local nombres = {}
-  for i, t in ipairs(temas) do nombres[i] = t.nombre end
-  return nombres
-end
-
 local function agregar_parametros()
   params:add_separator("conceptos", "CONCEPTOS")
 
-  params:add_option("tema", "tema", nombres_de_temas(), 1)
+  params:add_option("idioma", "idioma", { "español", "english" }, 1)
+  params:set_action("idioma", function(x)
+    -- cambia la voz solo si no habla el idioma elegido, para no
+    -- pisar la voz que guardaste en un pset
+    local voz_en_espanol = params:string("voz"):sub(1, 2) == "es"
+    if voz_en_espanol ~= (x == 1) then
+      params:set("voz", VOZ_DE_IDIOMA[x])
+    end
+    redraw()
+  end)
+
+  -- el tema es un número y no una lista de nombres, porque los nombres
+  -- cambian con el idioma; el formatter muestra el nombre del idioma actual
+  params:add_number("tema", "tema", 1, #IDIOMAS[1], 1, function(p)
+    return temas()[p:get()].nombre
+  end)
   params:set_action("tema", function() redraw() end)
   params:add_option("mezclar", "mezclar temas", { "no", "sí" }, 1)
   params:add_option("intervalo", "automático cada", INTERVALO_NOMBRES, 4)

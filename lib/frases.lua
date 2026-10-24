@@ -39,6 +39,8 @@ function frases.generar(temas, n_tema, mezclar)
 
   local function sustantivo()
     local s = elegir(tema_para(temas, n_tema, mezclar).sustantivos)
+    -- en inglés las palabras no llevan género: son texto simple
+    if type(s) == "string" then return s end
     genero = s[2]
     return s[1]
   end
@@ -55,8 +57,12 @@ function frases.generar(temas, n_tema, mezclar)
     n = sustantivo,
     adj = function()
       local a = elegir(tema_para(temas, n_tema, mezclar).adjetivos)
+      if type(a) == "string" then return a end
       return genero == "f" and a[2] or a[1]
     end,
+    -- las marcas en inglés
+    the = function() return "the " .. sustantivo() end,
+    a = function() return "a " .. sustantivo() end,
     verbo = function()
       return elegir(tema_para(temas, n_tema, mezclar).verbos)
     end,
@@ -75,9 +81,15 @@ function frases.generar(temas, n_tema, mezclar)
     return f and f() or marca
   end)
 
-  -- contracciones: "de el" -> "del", "a el" -> "al"
-  frase = frase:gsub("%f[%a]de el%f[%A]", "del")
-  frase = frase:gsub("%f[%a]a el%f[%A]", "al")
+  if temas.idioma == "en" then
+    -- "a" -> "an" antes de vocal, y antes de "heir" (la h no suena)
+    frase = frase:gsub("%f[%a]a ([aeiouAEIOU])", "an %1")
+    frase = frase:gsub("%f[%a]a heir", "an heir")
+  else
+    -- contracciones: "de el" -> "del", "a el" -> "al"
+    frase = frase:gsub("%f[%a]de el%f[%A]", "del")
+    frase = frase:gsub("%f[%a]a el%f[%A]", "al")
+  end
 
   -- mayúscula al principio y después de cada punto
   frase = mayuscula_inicial(frase)
