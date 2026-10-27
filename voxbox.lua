@@ -1,4 +1,4 @@
--- VOXBOX 1.1
+-- VOXBOX 1.2
 -- frases automáticas habladas
 -- con filtro, granos y LFO
 --
@@ -10,6 +10,7 @@
 --
 -- páginas:
 -- VOZ     tema / tono
+-- TIMBRE  siseo / entonación
 -- HABLA   rapidez / silencios
 -- AZAR    azar rapidez /
 --         azar silencios
@@ -18,7 +19,7 @@
 -- GRANO   tamaño / dispersión
 -- AVANCE  avance / tono granos
 -- LFO     velocidad / profundidad
--- AUTO    cada cuánto / entonación
+-- AUTO    cada cuánto / volumen
 --
 -- más opciones en
 -- PARAMETERS > VOXBOX
@@ -599,7 +600,8 @@ local MOTORES = { "eSpeak", "flite", "Piper" }
 local PROGRAMA_DE_MOTOR = { "espeak-ng", "flite", "piper" }
 local VOCES_FLITE = { "kal", "slt", "rms", "awb" }
 local DIR_PIPER = "/home/we/.local/share/piper/voices/"
-local LFO_DESTINOS = { "corte", "tamaño", "densidad", "tono granos", "rapidez" }
+local LFO_DESTINOS = { "corte", "tamaño", "densidad", "tono granos", "rapidez",
+  "siseo" }
 
 -- voces de softcut: la 1 dice la frase tal cual,
 -- de la 2 a la 5 disparan los granos por turnos
@@ -610,6 +612,7 @@ local VOCES_SC = { 1, 2, 3, 4, 5 }
 -- E1 elige la página; E2 y E3 cambian sus dos parámetros
 local PAGINAS = {
   { nombre = "VOZ",    e2 = "tema",      e3 = "tono" },
+  { nombre = "TIMBRE", e2 = "siseo",     e3 = "entonacion" },
   { nombre = "HABLA",  e2 = "rapidez",   e3 = "silencios" },
   { nombre = "AZAR",   e2 = "azar_rapidez", e3 = "azar_silencios" },
   { nombre = "FILTRO", e2 = "corte",     e3 = "resonancia" },
@@ -617,14 +620,15 @@ local PAGINAS = {
   { nombre = "GRANO",  e2 = "tamano",    e3 = "dispersion" },
   { nombre = "AVANCE", e2 = "avance",    e3 = "tono_granos" },
   { nombre = "LFO",    e2 = "lfo_vel",   e3 = "lfo_prof" },
-  { nombre = "AUTO",   e2 = "intervalo", e3 = "entonacion" },
+  { nombre = "AUTO",   e2 = "intervalo", e3 = "volumen" },
 }
 -- nombres cortos para que quepan abajo en la pantalla
 local ETIQUETAS = {
   tema = "", tono = "tono", corte = "corte", resonancia = "reso",
   granos = "granos", densidad = "dens", tamano = "tam", dispersion = "disp",
   avance = "avance", tono_granos = "tono", lfo_vel = "vel", lfo_prof = "prof",
-  intervalo = "", entonacion = "enton", rapidez = "rap",
+  intervalo = "", entonacion = "enton", rapidez = "rap", siseo = "siseo",
+  volumen = "vol",
   silencios = "sil", azar_rapidez = "azar r", azar_silencios = "azar s",
 }
 
@@ -722,9 +726,27 @@ local function renderizar(texto, al_terminar)
   local lentitud = 140 / rapidez                       -- >1 = más lento
   local cmd
   if motor == 1 then
-    cmd = string.format("espeak-ng -v %s -s %d -p %d -f %s -w %s",
-      params:string("voz"), rapidez, params:get("tono"),
-      comillas(txt), comillas(crudo))
+    -- SISEO: eSpeak tiene una variante "whisper" que cambia la vibración
+    -- de las cuerdas vocales por aire. para poder ir de a poco, la frase
+    -- se genera dos veces (normal y susurrada) y sox las mezcla.
+    local siseo = util.clamp(params:get("siseo") + lfo("siseo") * 0.5, 0, 1)
+    local function espeak(variante, salida)
+      return string.format("espeak-ng -v %s%s -s %d -p %d -f %s -w %s",
+        params:string("voz"), variante, rapidez, params:get("tono"),
+        comillas(txt), comillas(salida))
+    end
+    if siseo < 0.02 then
+      cmd = espeak("", crudo)
+    elseif siseo > 0.98 then
+      cmd = espeak("+whisper", crudo)
+    else
+      local normal, susurro = base .. ".normal.wav", base .. ".susurro.wav"
+      -- el susurro suena más bajo, así que entra con más ganancia
+      cmd = espeak("", normal) .. " && " .. espeak("+whisper", susurro)
+        .. string.format(" && sox -m -v %.2f %s -v %.2f %s %s",
+          1 - siseo, comillas(normal), siseo * 2, comillas(susurro),
+          comillas(crudo))
+    end
   elseif motor == 2 then
     cmd = string.format(
       "flite -voice %s --setf duration_stretch=%.2f --setf f0_shift=%.2f"
@@ -735,7 +757,9 @@ local function renderizar(texto, al_terminar)
     cmd = string.format("piper --model %s --length_scale %.2f --output_file %s < %s",
       comillas(modelo), lentitud, comillas(crudo), comillas(txt))
   end
-  cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s",
+  -- 48 kHz para softcut, y "norm" para que todas las frases suenen
+  -- igual de fuerte, sean normales o susurradas
+  cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s norm -3",
     comillas(crudo), comillas(wav))
 
   norns.system_cmd(cmd .. " 2>&1", function()
@@ -891,6 +915,9 @@ local function agregar_parametros()
   params:add_option("voz_piper", "voz Piper", voces_piper, 1)
   params:add_number("tono", "tono", 0, 99, 50)
   params:add_number("entonacion", "entonación", 0, 100, 50)
+  -- 0 = voz normal, 1 = susurro puro (solo con eSpeak)
+  params:add_control("siseo", "siseo (eSpeak)",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
   params:add_separator("voxbox_habla", "HABLA")
   params:add_number("rapidez", "rapidez (palabras/min)", 80, 450, 140)
   -- probabilidad de una pausa entre cada par de palabras
