@@ -1,22 +1,40 @@
--- VOXBOX 1.0
+-- VOXBOX 1.1
 -- frases automáticas habladas
+-- con filtro, granos y LFO
 --
--- E1 tema
--- E2 tono de voz
--- E3 cada cuánto habla
---    (modo automático)
+-- E1 cambia de página
+-- E2 / E3 los dos parámetros
+--   de esa página
 -- K2 decir una frase nueva
 -- K3 modo automático on/off
 --
+-- páginas:
+-- VOZ     tema / tono
+-- HABLA   rapidez / silencios
+-- AZAR    azar rapidez /
+--         azar silencios
+-- FILTRO  corte / resonancia
+-- GRANOS  volumen / densidad
+-- GRANO   tamaño / dispersión
+-- AVANCE  avance / tono granos
+-- LFO     velocidad / profundidad
+-- AUTO    cada cuánto / entonación
+--
 -- más opciones en
 -- PARAMETERS > VOXBOX
--- (idioma, voz, loop...)
+-- (idioma, motor de voz,
+-- tipo de filtro, destino
+-- del LFO...)
 --
--- necesita espeak-ng y sox
--- (los instala el script
--- speech, o por ssh:
+-- los granos empiezan en 0:
+-- súbelos en la página GRANOS
+--
+-- necesita sox y al menos un
+-- motor: espeak-ng, flite o
+-- piper (los instala el
+-- script speech, o por ssh:
 -- sudo apt install
---   espeak-ng sox)
+--   espeak-ng flite sox)
 --
 -- todo está en este archivo:
 -- las palabras en español y
@@ -31,189 +49,183 @@ local TEMAS_ES = (function()
   -- edita esta parte en maiden para crear tus propios temas:
   -- copia un tema completo, cámbiale el nombre y las palabras.
   --
-  -- la idea de estos temas es rozar las ideas sin nombrarlas:
-  -- nada de "cuántico", "conciencia", "universo", "algoritmo",
-  -- "energía" ni "dimensión". que la referencia se adivine.
+  -- el registro es científico: frases de cuaderno de laboratorio,
+  -- hipótesis y resultados, no metáforas. vocabulario técnico sí,
+  -- palabras gastadas de divulgación no ("cuántico", "conciencia",
+  -- "universo", "energía", "vibración", "dimensión").
   --
   -- reglas para que las frases suenen bien:
   --
-  --   sustantivos       van con su género: { "umbral", "m" } o { "huella", "f" }.
+  --   sustantivos       van con su género: { "estado", "m" } o { "fase", "f" }.
   --                     evita los femeninos que empiezan con "a" tónica
   --                     (alma, habla, álgebra): llevan "el" y el script
   --                     les pondría "la".
-  --   adjetivos         van en masculino y femenino: { "lento", "lenta" }.
-  --                     si es igual en los dos, repítelo: { "doble", "doble" }.
-  --   verbos            en tercera persona, sin objeto: "se bifurca", "duda".
-  --                     evita que empiecen con "no": hay plantillas que ya
-  --                     ponen palabras antes.
+  --   adjetivos         van en masculino y femenino: { "estable", "estable" },
+  --                     { "discreto", "discreta" }.
+  --   verbos            en tercera persona, sin objeto: "decae", "fluctúa".
   --   transitivos       en tercera persona, y van seguidos de una cosa:
-  --                     "mide" -> "la mirada mide el umbral".
-  --   circunstancias    dónde, cuándo o cómo: "mientras nadie mira".
+  --                     "mide" -> "el detector mide la fase".
+  --   circunstancias    dónde, cuándo o cómo: "a temperatura constante".
 
   local temas = {
 
-    -- superposición, medición, entrelazamiento, la rendija doble...
-    -- sin decir ninguna de esas palabras
+    -- mecánica cuántica, sin decirlo: medición, coherencia, correlaciones
     {
-      nombre = "lo no medido",
+      nombre = "medición",
       sustantivos = {
-        { "testigo", "m" }, { "umbral", "m" }, { "desvío", "m" }, { "eco", "m" },
-        { "intervalo", "m" }, { "gemelo", "m" }, { "salto", "m" },
-        { "mirada", "f" }, { "indecisión", "f" }, { "distancia", "f" },
-        { "amplitud", "f" }, { "huella", "f" }, { "rendija", "f" },
-        { "probabilidad", "f" },
+        { "observable", "m" }, { "estado", "m" }, { "detector", "m" },
+        { "resultado", "m" }, { "sistema", "m" }, { "acoplamiento", "m" },
+        { "fase", "f" }, { "coherencia", "f" }, { "amplitud", "f" },
+        { "correlación", "f" }, { "interferencia", "f" },
+        { "incertidumbre", "f" }, { "medición", "f" },
       },
       adjetivos = {
-        { "indeciso", "indecisa" }, { "simultáneo", "simultánea" },
-        { "hermanado", "hermanada" }, { "no observado", "no observada" },
-        { "borroso", "borrosa" }, { "discontinuo", "discontinua" },
-        { "doble", "doble" }, { "provisional", "provisional" },
-        { "inacabado", "inacabada" },
+        { "no local", "no local" }, { "coherente", "coherente" },
+        { "correlacionado", "correlacionada" },
+        { "indeterminado", "indeterminada" }, { "discreto", "discreta" },
+        { "aleatorio", "aleatoria" }, { "reversible", "reversible" },
+        { "estable", "estable" },
       },
       verbos = {
-        "se decide", "duda", "se bifurca", "titubea", "ocurre a medias",
-        "se desdobla", "se anula", "persiste en dos sitios", "se borra al ser visto",
+        "pierde coherencia", "fluctúa", "colapsa", "oscila",
+        "permanece indefinido", "se estabiliza", "decae", "interfiere consigo",
       },
       transitivos = {
-        "mide", "elige", "contamina", "decide", "duplica", "deshace",
-        "toca sin tocar", "adivina",
+        "mide", "perturba", "determina", "registra", "anula",
+        "se correlaciona con", "amplifica", "predice",
       },
       circunstancias = {
-        "antes de cualquier medición", "mientras nadie mira",
-        "en dos lugares a la vez", "del otro lado de la rendija",
-        "a una distancia que no separa", "en el instante previo a elegir",
-        "sin causa aparente",
+        "en ausencia de observación", "en aislamiento completo",
+        "a baja temperatura", "dentro del margen de error",
+        "tras mediciones repetidas", "entre dos detectores separados",
+        "durante el intervalo medido",
       },
     },
 
-    -- la novedad que crece, el atractor al final del tiempo, el lenguaje
-    -- que se vuelve visible, el regreso de lo arcaico
+    -- de McKenna a la ciencia de la complejidad: novedad, emergencia,
+    -- autoorganización, atractores
     {
-      nombre = "novedad",
+      nombre = "complejidad",
       sustantivos = {
-        { "lenguaje", "m" }, { "hábito", "m" }, { "atractor", "m" },
-        { "ritual", "m" }, { "pliegue", "m" }, { "remolino", "m" },
-        { "novedad", "f" }, { "gramática", "f" }, { "sintaxis", "f" },
-        { "espiral", "f" }, { "imaginación", "f" }, { "historia", "f" },
-        { "especie", "f" },
+        { "lenguaje", "m" }, { "patrón", "m" }, { "atractor", "m" },
+        { "umbral", "m" }, { "ritmo", "m" }, { "novedad", "f" },
+        { "complejidad", "f" }, { "información", "f" },
+        { "autoorganización", "f" }, { "emergencia", "f" }, { "red", "f" },
+        { "señal", "f" },
       },
       adjetivos = {
-        { "visible", "visible" }, { "arcaico", "arcaica" },
-        { "desbordado", "desbordada" }, { "inminente", "inminente" },
-        { "comestible", "comestible" }, { "anterior al habla", "anterior al habla" },
-        { "concéntrico", "concéntrica" }, { "acelerado", "acelerada" },
+        { "emergente", "emergente" }, { "no lineal", "no lineal" },
+        { "recursivo", "recursiva" }, { "autosimilar", "autosimilar" },
+        { "fractal", "fractal" }, { "adaptativo", "adaptativa" },
+        { "creciente", "creciente" }, { "caótico", "caótica" },
       },
       verbos = {
-        "se condensa", "se vuelve visible", "regresa", "se acelera", "brota",
-        "se pliega sobre sí", "aprende a cantar", "nos atrae desde adelante",
-        "se derrama",
+        "emerge", "se autoorganiza", "se acelera", "converge hacia un atractor",
+        "aumenta en complejidad", "se ramifica", "se sincroniza",
       },
       transitivos = {
-        "pronuncia", "imagina", "devora", "acelera", "atrae", "cultiva",
-        "traduce", "recuerda",
+        "codifica", "comprime", "amplifica", "retroalimenta", "organiza",
+        "transmite", "predice", "acelera",
       },
       circunstancias = {
-        "al final de la historia", "desde el futuro", "antes de las palabras",
-        "cuando el lenguaje se pueda ver", "en el último día de la costumbre",
-        "más rápido cada vez", "como lo hacían los primeros",
+        "lejos del equilibrio", "en cada iteración", "en escala logarítmica",
+        "a lo largo de la historia evolutiva", "cerca del punto crítico",
+        "de forma exponencial", "en el borde del caos",
       },
     },
 
-    -- máquinas que piensan antes de que existiera la palabra, el azar
-    -- usado como herramienta, copias que se copian, juegos perdidos,
-    -- la razón llevada hasta donde quema
+    -- MANIAC: autómatas, Monte Carlo, juegos, la máquina que aprende
     {
-      nombre = "cálculo",
+      nombre = "computación",
       sustantivos = {
-        { "autómata", "m" }, { "azar", "m" }, { "tablero", "m" },
-        { "error", "m" }, { "mecanismo", "m" }, { "destello", "m" },
-        { "insomnio", "m" }, { "jugada", "f" }, { "copia", "f" },
-        { "regla", "f" }, { "razón", "f" }, { "precisión", "f" },
-        { "tabla", "f" }, { "tarjeta", "f" },
+        { "autómata", "m" }, { "procesador", "m" }, { "programa", "m" },
+        { "modelo", "m" }, { "error", "m" }, { "cálculo", "m" },
+        { "método", "m" }, { "juego", "m" }, { "estrategia", "f" },
+        { "simulación", "f" }, { "probabilidad", "f" }, { "regla", "f" },
+        { "memoria", "f" }, { "iteración", "f" },
       },
       adjetivos = {
-        { "perfecto", "perfecta" }, { "inhumano", "inhumana" },
-        { "exacto", "exacta" }, { "implacable", "implacable" },
-        { "lúcido", "lúcida" }, { "impredecible", "impredecible" },
-        { "insomne", "insomne" }, { "incalculable", "incalculable" },
+        { "determinista", "determinista" }, { "estocástico", "estocástica" },
+        { "óptimo", "óptima" }, { "autorreplicante", "autorreplicante" },
+        { "programable", "programable" }, { "finito", "finita" },
+        { "exacto", "exacta" }, { "aproximado", "aproximada" },
       },
       verbos = {
-        "se reproduce", "calcula sin descanso", "aprende a perder", "gana",
-        "se equivoca a propósito", "enloquece de claridad", "juega",
-        "se repite", "termina",
+        "converge", "se autorreplica", "termina", "falla", "se optimiza",
+        "aprende", "diverge", "se detiene",
       },
       transitivos = {
-        "calcula", "imita", "vence", "predice", "repite", "sueña",
-        "ordena", "multiplica",
+        "calcula", "simula", "optimiza", "ejecuta", "aproxima", "minimiza",
+        "evalúa", "reproduce",
       },
       circunstancias = {
-        "en la jugada treinta y siete", "con una lucidez insoportable",
-        "a la velocidad del miedo", "en una tarjeta perforada",
-        "antes del destello", "por un margen infinitesimal",
-        "mientras los demás duermen",
+        "por el método de Monte Carlo", "en tiempo polinómico",
+        "tras diez mil simulaciones", "con una precisión de seis decimales",
+        "en la jugada treinta y siete", "con memoria finita",
+        "sin intervención humana",
       },
     },
 
-    -- calor que se dispersa, simetrías rotas, la flecha del tiempo,
-    -- el espacio que se curva; física a escala de piedra
+    -- termodinámica y relatividad: entropía, equilibrio, simetría, curvatura
     {
-      nombre = "materia lenta",
+      nombre = "termodinámica",
       sustantivos = {
-        { "calor", "m" }, { "desorden", "m" }, { "residuo", "m" },
-        { "horizonte", "m" }, { "peso", "m" }, { "enfriamiento", "m" },
-        { "simetría", "f" }, { "curvatura", "f" }, { "inercia", "f" },
-        { "flecha", "f" }, { "constante", "f" }, { "ceniza", "f" },
+        { "calor", "m" }, { "equilibrio", "m" }, { "gradiente", "m" },
+        { "campo", "m" }, { "flujo", "m" }, { "horizonte", "m" },
+        { "entropía", "f" }, { "temperatura", "f" }, { "presión", "f" },
+        { "simetría", "f" }, { "curvatura", "f" }, { "masa", "f" },
         { "densidad", "f" },
       },
       adjetivos = {
-        { "irreversible", "irreversible" }, { "lento", "lenta" },
-        { "tibio", "tibia" }, { "curvo", "curva" }, { "residual", "residual" },
-        { "fósil", "fósil" }, { "roto", "rota" }, { "pesado", "pesada" },
+        { "irreversible", "irreversible" }, { "adiabático", "adiabática" },
+        { "isotrópico", "isotrópica" }, { "homogéneo", "homogénea" },
+        { "inestable", "inestable" }, { "constante", "constante" },
+        { "macroscópico", "macroscópica" }, { "cerrado", "cerrada" },
       },
       verbos = {
-        "se enfría", "se rompe", "se dispersa", "cae hacia adentro",
-        "se dilata", "se demora", "se equilibra", "se detiene",
+        "se disipa", "alcanza el equilibrio", "se expande", "se contrae",
+        "aumenta", "disminuye", "se conserva", "se rompe espontáneamente",
       },
       transitivos = {
-        "curva", "dobla", "arrastra", "olvida", "dispersa", "retiene",
-        "aplasta", "desordena",
+        "transfiere", "curva", "disipa", "comprime", "conserva", "desplaza",
+        "rompe", "equilibra",
       },
       circunstancias = {
-        "en la escala más pequeña", "desde el primer segundo",
-        "hasta el último grado", "a favor del tiempo", "en sentido contrario",
-        "durante miles de millones de años", "sin testigos",
+        "en un sistema cerrado", "a temperatura constante",
+        "cerca del cero absoluto", "a escala macroscópica",
+        "en la dirección del tiempo", "durante miles de millones de años",
+        "sin intercambio de calor",
       },
     },
 
-    -- el futuro sin pantallas ni cromo: herencias, injertos, especies
-    -- que vienen después, cuerpos prestados
+    -- el futuro como biología: genomas editados, linajes, especies nuevas
     {
-      nombre = "descendencia",
+      nombre = "biotecnología",
       sustantivos = {
-        { "injerto", "m" }, { "archivo", "m" }, { "descendiente", "m" },
-        { "órgano", "m" }, { "clima", "m" }, { "heredero", "m" },
-        { "herencia", "f" }, { "prótesis", "f" }, { "membrana", "f" },
-        { "cosecha", "f" }, { "especie", "f" }, { "mutación", "f" },
-        { "semilla", "f" },
+        { "genoma", "m" }, { "injerto", "m" }, { "organismo", "m" },
+        { "tejido", "m" }, { "linaje", "m" }, { "fenotipo", "m" },
+        { "mutación", "f" }, { "proteína", "f" }, { "célula", "f" },
+        { "especie", "f" }, { "secuencia", "f" }, { "membrana", "f" },
+        { "población", "f" },
       },
       adjetivos = {
-        { "sintético", "sintética" }, { "heredado", "heredada" },
-        { "cultivado", "cultivada" }, { "póstumo", "póstuma" },
-        { "híbrido", "híbrida" }, { "nuevo", "nueva" },
-        { "injertado", "injertada" }, { "transitorio", "transitoria" },
+        { "sintético", "sintética" }, { "transgénico", "transgénica" },
+        { "heredable", "heredable" }, { "híbrido", "híbrida" },
+        { "modificado", "modificada" }, { "recombinante", "recombinante" },
+        { "viable", "viable" }, { "adaptativo", "adaptativa" },
       },
       verbos = {
-        "germina", "se adapta", "muda de piel", "hereda", "nace sin nombre",
-        "se hibrida", "sobrevive", "se ramifica",
+        "muta", "se replica", "se diferencia", "se adapta", "se expresa",
+        "sobrevive", "evoluciona", "se extingue",
       },
       transitivos = {
-        "hereda", "cultiva", "reemplaza", "archiva", "injerta", "nombra",
-        "sustituye", "conserva",
+        "edita", "expresa", "hereda", "sintetiza", "secuencia", "modifica",
+        "replica", "cultiva",
       },
       circunstancias = {
-        "dentro de mil generaciones", "después de nosotros", "bajo otro clima",
-        "cuando ya nadie recuerde la lluvia", "en un cuerpo prestado",
-        "al margen de la especie", "sin pedir permiso",
+        "in vitro", "en la siguiente generación", "bajo presión selectiva",
+        "en condiciones de laboratorio", "a lo largo de mil generaciones",
+        "en un medio de cultivo", "sin selección natural",
       },
     },
 
@@ -222,33 +234,34 @@ local TEMAS_ES = (function()
   -- plantillas: las formas que puede tener una frase.
   -- cada {marca} se cambia por una palabra del tema:
   --
-  --   {el}      artículo + sustantivo     "el umbral", "la huella"
-  --   {un}      artículo + sustantivo     "un umbral", "una huella"
-  --   {n}       sustantivo solo           "umbral"
+  --   {el}      artículo + sustantivo     "el estado", "la fase"
+  --   {un}      artículo + sustantivo     "un estado", "una fase"
+  --   {n}       sustantivo solo           "estado"
   --   {adj}     adjetivo, concuerda con el último sustantivo
-  --   {verbo}   un verbo sin objeto       "se bifurca"
+  --   {verbo}   un verbo sin objeto       "decae"
   --   {vt}      un verbo transitivo       "mide"
-  --   {circ}    una circunstancia         "mientras nadie mira"
+  --   {circ}    una circunstancia         "a temperatura constante"
+  --   {prob}    una probabilidad          "0,37"
+  --   {pct}     un porcentaje             "4,2"
   --
   -- "de el" y "a el" se convierten solos en "del" y "al".
   -- agrega, borra o inventa las tuyas.
   temas.plantillas = {
-    "{el} {adj} {verbo} {circ}.",
-    "{el} {vt} {el} {circ}.",
-    "{el} es {un} que {verbo}.",
-    "lo que {vt} {el} también {vt} {el}.",
-    "{el} de {el}.",
-    "{el} de {el} {verbo} {circ}.",
-    "hay {un} {adj} {circ}.",
-    "¿quién {vt} {el} {circ}?",
-    "{el} y {el} son {un}.",
-    "cada {n} es {un} {adj}.",
-    "sin {el}, {el} {verbo}.",
-    "{n}. {n}. {n}.",
-    "{el} {verbo} hasta volverse {adj}.",
-    "{circ}, {el} {vt} {el}.",
-    "primero {el}, después {el}, al final {el} {adj}.",
-    "¿y si {el} {verbo} {circ}?",
+    "se observa que {el} {verbo} {circ}.",
+    "{el} es proporcional a {el}.",
+    "hipótesis: {el} {verbo} {circ}.",
+    "a mayor {n}, menor {n}.",
+    "{el} depende de {el}.",
+    "los datos sugieren que {el} {vt} {el}.",
+    "si {el} aumenta, {el} {verbo}.",
+    "{el} se comporta como {un} {adj}.",
+    "resultado: {el} {verbo} {circ}.",
+    "conclusión: {el} {vt} {el} {circ}.",
+    "variable independiente: {n}. variable dependiente: {n}.",
+    "{el} {adj} {vt} {el} con una probabilidad de {prob}.",
+    "error estimado: {pct} por ciento.",
+    "sin evidencia concluyente: {el} {verbo} {circ}.",
+    "pregunta abierta: si {el} {verbo} {circ}.",
   }
 
   return temas
@@ -259,150 +272,144 @@ end)()
 -- ===========================================================================
 local TEMAS_EN = (function()
   -- los mismos cinco temas de arriba, escritos en inglés.
-  -- van en el mismo orden, porque E1 elige el tema por número
-  -- y así el tema 2 es "novedad" en un idioma y "novelty" en el otro.
+  -- van en el mismo orden, porque el tema se elige por número
+  -- y así el tema 2 es "complejidad" en un idioma y "complexity" en el otro.
   --
   -- los nombres de las listas (sustantivos, adjetivos...) siguen en
   -- español porque el generador es el mismo para los dos idiomas.
-  --
   -- en inglés no hay género, así que cada palabra es un texto simple.
-  -- lo mismo que en español: rozar las ideas sin nombrarlas
-  -- (nada de "quantum", "consciousness", "universe", "algorithm",
-  -- "energy", "dimension").
 
   local themes = {
 
     {
-      nombre = "the unmeasured",
+      nombre = "measurement",
       sustantivos = {
-        "witness", "threshold", "detour", "echo", "interval", "twin", "leap",
-        "gaze", "indecision", "distance", "amplitude", "trace", "slit",
-        "likelihood",
+        "observable", "state", "detector", "outcome", "system", "coupling",
+        "phase", "coherence", "amplitude", "correlation", "interference",
+        "uncertainty", "measurement",
       },
       adjetivos = {
-        "undecided", "simultaneous", "twinned", "unobserved", "blurred",
-        "discontinuous", "double", "provisional", "unfinished",
+        "nonlocal", "coherent", "correlated", "indeterminate", "discrete",
+        "random", "reversible", "stable",
       },
       verbos = {
-        "makes up its mind", "hesitates", "forks", "half happens",
-        "splits in two", "cancels out", "persists in two places",
-        "vanishes when seen", "wavers",
+        "decoheres", "fluctuates", "collapses", "oscillates",
+        "remains undefined", "stabilizes", "decays", "interferes with itself",
       },
       transitivos = {
-        "measures", "chooses", "contaminates", "settles", "duplicates",
-        "undoes", "touches without touching", "guesses",
+        "measures", "perturbs", "determines", "records", "cancels",
+        "correlates with", "amplifies", "predicts",
       },
       circunstancias = {
-        "before any measurement", "while no one is looking",
-        "in two places at once", "on the other side of the slit",
-        "at a distance that does not separate", "in the instant before choosing",
-        "for no apparent reason",
+        "in the absence of observation", "under complete isolation",
+        "at low temperature", "within the margin of error",
+        "after repeated measurement", "between two separated detectors",
+        "during the measured interval",
       },
     },
 
     {
-      nombre = "novelty",
+      nombre = "complexity",
       sustantivos = {
-        "language", "habit", "attractor", "ritual", "fold", "whirlpool",
-        "novelty", "grammar", "syntax", "spiral", "imagination", "history",
-        "species",
+        "language", "pattern", "attractor", "threshold", "rhythm", "novelty",
+        "complexity", "information", "self-organization", "emergence",
+        "network", "signal",
       },
       adjetivos = {
-        "visible", "archaic", "overflowing", "imminent", "edible",
-        "older than speech", "concentric", "accelerating",
+        "emergent", "nonlinear", "recursive", "self-similar", "fractal",
+        "adaptive", "increasing", "chaotic",
       },
       verbos = {
-        "condenses", "becomes visible", "returns", "accelerates", "sprouts",
-        "folds into itself", "learns to sing", "pulls us from ahead",
-        "spills over",
+        "emerges", "self-organizes", "accelerates", "converges on an attractor",
+        "grows in complexity", "branches", "synchronizes",
       },
       transitivos = {
-        "pronounces", "imagines", "devours", "accelerates", "attracts",
-        "cultivates", "translates", "remembers",
+        "encodes", "compresses", "amplifies", "feeds back into", "organizes",
+        "transmits", "predicts", "accelerates",
       },
       circunstancias = {
-        "at the end of history", "from the future", "before words",
-        "when language can be seen", "on the last day of habit",
-        "faster every time", "the way the first ones did",
+        "far from equilibrium", "at every iteration", "on a logarithmic scale",
+        "across evolutionary time", "near the critical point", "exponentially",
+        "at the edge of chaos",
       },
     },
 
     {
-      nombre = "calculation",
+      nombre = "computation",
       sustantivos = {
-        "automaton", "chance", "board", "error", "mechanism", "flash",
-        "insomnia", "move", "copy", "rule", "reason", "precision", "table",
-        "punch card",
+        "automaton", "processor", "program", "model", "error", "calculation",
+        "method", "game", "strategy", "simulation", "probability", "rule",
+        "memory", "iteration",
       },
       adjetivos = {
-        "perfect", "inhuman", "exact", "relentless", "lucid", "unpredictable",
-        "sleepless", "incalculable",
+        "deterministic", "stochastic", "optimal", "self-replicating",
+        "programmable", "finite", "exact", "approximate",
       },
       verbos = {
-        "reproduces", "calculates without rest", "learns to lose", "wins",
-        "errs on purpose", "goes mad with clarity", "plays", "repeats itself",
-        "ends",
+        "converges", "self-replicates", "halts", "fails", "optimizes",
+        "learns", "diverges", "terminates",
       },
       transitivos = {
-        "calculates", "imitates", "defeats", "predicts", "repeats", "dreams",
-        "orders", "multiplies",
+        "calculates", "simulates", "optimizes", "executes", "approximates",
+        "minimizes", "evaluates", "reproduces",
       },
       circunstancias = {
-        "on move thirty-seven", "with unbearable lucidity",
-        "at the speed of fear", "on a punched card", "before the flash",
-        "by an infinitesimal margin", "while the others sleep",
+        "by the Monte Carlo method", "in polynomial time",
+        "after ten thousand simulations", "to six decimal places",
+        "on move thirty-seven", "with finite memory",
+        "without human intervention",
       },
     },
 
     {
-      nombre = "slow matter",
+      nombre = "thermodynamics",
       sustantivos = {
-        "heat", "disorder", "residue", "horizon", "weight", "cooling",
-        "symmetry", "curvature", "inertia", "arrow", "constant", "ash",
+        "heat", "equilibrium", "gradient", "field", "flow", "horizon",
+        "entropy", "temperature", "pressure", "symmetry", "curvature", "mass",
         "density",
       },
       adjetivos = {
-        "irreversible", "slow", "lukewarm", "curved", "residual", "fossil",
-        "broken", "heavy",
+        "irreversible", "adiabatic", "isotropic", "homogeneous", "unstable",
+        "constant", "macroscopic", "closed",
       },
       verbos = {
-        "cools", "breaks", "disperses", "falls inward", "dilates", "lingers",
-        "settles", "comes to rest",
+        "dissipates", "reaches equilibrium", "expands", "contracts",
+        "increases", "decreases", "is conserved", "breaks spontaneously",
       },
       transitivos = {
-        "curves", "bends", "drags", "forgets", "scatters", "retains",
-        "crushes", "unsettles",
+        "transfers", "curves", "dissipates", "compresses", "conserves",
+        "displaces", "breaks", "balances",
       },
       circunstancias = {
-        "at the smallest scale", "since the first second",
-        "down to the last degree", "with the grain of time",
-        "against the current", "for billions of years", "without witnesses",
+        "in a closed system", "at constant temperature", "near absolute zero",
+        "at macroscopic scale", "in the direction of time",
+        "over billions of years", "without heat exchange",
       },
     },
 
     {
-      nombre = "descendants",
+      nombre = "biotechnology",
       sustantivos = {
-        "graft", "archive", "descendant", "organ", "climate", "heir",
-        "inheritance", "prosthesis", "membrane", "harvest", "species",
-        "mutation", "seed",
+        "genome", "graft", "organism", "tissue", "lineage", "phenotype",
+        "mutation", "protein", "cell", "species", "sequence", "membrane",
+        "population",
       },
       adjetivos = {
-        "synthetic", "inherited", "cultivated", "posthumous", "hybrid", "new",
-        "grafted", "transitory",
+        "synthetic", "transgenic", "heritable", "hybrid", "modified",
+        "recombinant", "viable", "adaptive",
       },
       verbos = {
-        "germinates", "adapts", "sheds its skin", "inherits",
-        "is born without a name", "hybridizes", "survives", "branches out",
+        "mutates", "replicates", "differentiates", "adapts", "is expressed",
+        "survives", "evolves", "goes extinct",
       },
       transitivos = {
-        "inherits", "cultivates", "replaces", "archives", "grafts", "names",
-        "substitutes", "preserves",
+        "edits", "expresses", "inherits", "synthesizes", "sequences",
+        "modifies", "replicates", "cultivates",
       },
       circunstancias = {
-        "a thousand generations from now", "after us", "under another climate",
-        "when no one remembers rain", "in a borrowed body",
-        "at the edge of the species", "without asking permission",
+        "in vitro", "in the next generation", "under selective pressure",
+        "under laboratory conditions", "over a thousand generations",
+        "in a culture medium", "without natural selection",
       },
     },
 
@@ -410,30 +417,31 @@ local TEMAS_EN = (function()
 
   -- plantillas en inglés. las marcas:
   --
-  --   {the}     "the" + sustantivo        "the threshold"
-  --   {a}       "a" + sustantivo          "a threshold" ("an" se pone solo)
+  --   {the}     "the" + sustantivo        "the state"
+  --   {a}       "a" + sustantivo          "a state" ("an" se pone solo)
   --   {n}       sustantivo solo
   --   {adj}     adjetivo (en inglés va ANTES del sustantivo)
-  --   {verbo}   verbo sin objeto          "forks"
+  --   {verbo}   verbo sin objeto          "decays"
   --   {vt}      verbo transitivo          "measures"
-  --   {circ}    circunstancia             "while no one is looking"
+  --   {circ}    circunstancia             "at constant temperature"
+  --   {prob}    una probabilidad          "0.37"
+  --   {pct}     un porcentaje             "4.2"
   themes.plantillas = {
-    "the {adj} {n} {verbo} {circ}.",
-    "{the} {vt} {the} {circ}.",
-    "{the} is {a} that {verbo}.",
-    "what {vt} {the} also {vt} {the}.",
-    "{the} of {the}.",
-    "{the} of {the} {verbo} {circ}.",
-    "there is a {adj} {n} {circ}.",
-    "who {vt} {the} {circ}?",
-    "{the} and {the} are {a}.",
-    "every {n} is a {adj} {n}.",
-    "without {the}, {the} {verbo}.",
-    "{n}. {n}. {n}.",
-    "{the} {verbo} until it becomes {adj}.",
-    "{circ}, {the} {vt} {the}.",
-    "first {the}, then {the}, at last the {adj} {n}.",
-    "what if {the} {verbo} {circ}?",
+    "it is observed that {the} {verbo} {circ}.",
+    "{the} is proportional to {the}.",
+    "hypothesis: {the} {verbo} {circ}.",
+    "the greater the {n}, the lower the {n}.",
+    "{the} depends on {the}.",
+    "the data suggest that {the} {vt} {the}.",
+    "if {the} increases, {the} {verbo}.",
+    "{the} behaves like a {adj} {n}.",
+    "result: {the} {verbo} {circ}.",
+    "conclusion: {the} {vt} {the} {circ}.",
+    "independent variable: {n}. dependent variable: {n}.",
+    "the {adj} {n} {vt} {the} with a probability of {prob}.",
+    "estimated error: {pct} percent.",
+    "no conclusive evidence: {the} {verbo} {circ}.",
+    "open question: whether {the} {verbo} {circ}.",
   }
 
   themes.idioma = "en"
@@ -505,7 +513,17 @@ local frases = (function()
         if type(a) == "string" then return a end
         return genero == "f" and a[2] or a[1]
       end,
-      -- las marcas en inglés
+      -- cifras: una probabilidad (0.01 a 0.99) o un porcentaje (0.5 a 25.0).
+    -- en español el decimal va con coma
+    prob = function()
+      local cifra = string.format("0.%02d", math.random(1, 99))
+      return temas.idioma == "en" and cifra or (cifra:gsub("%.", ","))
+    end,
+    pct = function()
+      local cifra = string.format("%.1f", math.random(5, 250) / 10)
+      return temas.idioma == "en" and cifra or (cifra:gsub("%.", ","))
+    end,
+    -- las marcas en inglés
       the = function() return "the " .. sustantivo() end,
       a = function() return "a " .. sustantivo() end,
       verbo = function()
@@ -574,7 +592,43 @@ local VELOCIDADES = { -1, 0.5, 0.75, 1, 1.5, 2 }
 local INTERVALO_NOMBRES = { "1/2 tiempo", "1 tiempo", "2 tiempos", "1 compás",
   "2 compases", "4 compases" }
 local INTERVALOS = { 0.5, 1, 2, 4, 8, 16 }   -- en tiempos (beats)
+local FILTROS = { "abierto", "pasa bajos", "pasa banda", "pasa altos" }
+-- motores de voz. flite solo habla inglés; Piper necesita una voz
+-- (.onnx y su .onnx.json) en ~/.local/share/piper/voices/
+local MOTORES = { "eSpeak", "flite", "Piper" }
+local PROGRAMA_DE_MOTOR = { "espeak-ng", "flite", "piper" }
+local VOCES_FLITE = { "kal", "slt", "rms", "awb" }
+local DIR_PIPER = "/home/we/.local/share/piper/voices/"
+local LFO_DESTINOS = { "corte", "tamaño", "densidad", "tono granos", "rapidez" }
 
+-- voces de softcut: la 1 dice la frase tal cual,
+-- de la 2 a la 5 disparan los granos por turnos
+local VOZ_SECA = 1
+local GRANOS = { 2, 3, 4, 5 }
+local VOCES_SC = { 1, 2, 3, 4, 5 }
+
+-- E1 elige la página; E2 y E3 cambian sus dos parámetros
+local PAGINAS = {
+  { nombre = "VOZ",    e2 = "tema",      e3 = "tono" },
+  { nombre = "HABLA",  e2 = "rapidez",   e3 = "silencios" },
+  { nombre = "AZAR",   e2 = "azar_rapidez", e3 = "azar_silencios" },
+  { nombre = "FILTRO", e2 = "corte",     e3 = "resonancia" },
+  { nombre = "GRANOS", e2 = "granos",    e3 = "densidad" },
+  { nombre = "GRANO",  e2 = "tamano",    e3 = "dispersion" },
+  { nombre = "AVANCE", e2 = "avance",    e3 = "tono_granos" },
+  { nombre = "LFO",    e2 = "lfo_vel",   e3 = "lfo_prof" },
+  { nombre = "AUTO",   e2 = "intervalo", e3 = "entonacion" },
+}
+-- nombres cortos para que quepan abajo en la pantalla
+local ETIQUETAS = {
+  tema = "", tono = "tono", corte = "corte", resonancia = "reso",
+  granos = "granos", densidad = "dens", tamano = "tam", dispersion = "disp",
+  avance = "avance", tono_granos = "tono", lfo_vel = "vel", lfo_prof = "prof",
+  intervalo = "", entonacion = "enton", rapidez = "rap",
+  silencios = "sil", azar_rapidez = "azar r", azar_silencios = "azar s",
+}
+
+local pagina = 1
 local frase = ""
 local estado = "K2: frase nueva"
 local ocupado = false     -- true mientras eSpeak está generando
@@ -582,7 +636,15 @@ local auto = false
 local turno = 1           -- alterna entre dos archivos, para no
                           -- sobrescribir el que está sonando
 local ultimo_wav = nil
-local deps_ok = false
+local hay = {}            -- qué programas están instalados
+local voces_piper = { "-" }
+
+local dur_frase = 0       -- duración de la frase cargada, en segundos
+local cabeza = 0          -- por dónde van leyendo los granos, en segundos
+local siguiente_grano = 1
+local marcas = {}         -- los últimos granos, para dibujarlos
+local lfo_fase = 0
+local lfo_valor = 0       -- de -1 a 1, ya multiplicado por la profundidad
 
 -- ---------------------------------------------------------------------------
 -- sonido
@@ -597,6 +659,31 @@ local function hay_programa(nombre)
   return util.os_capture("command -v " .. nombre) ~= ""
 end
 
+-- cuánto mueve el LFO a este destino ahora mismo (0 si apunta a otro)
+local function lfo(destino)
+  if LFO_DESTINOS[params:get("lfo_destino")] ~= destino then return 0 end
+  return lfo_valor
+end
+
+-- un número al azar entre -1 y 1
+local function azar()
+  return math.random() * 2 - 1
+end
+
+-- mete pausas entre palabras: una coma es una pausa corta y unos puntos
+-- suspensivos una larga. los tres motores las respetan.
+local function con_silencios(texto, probabilidad)
+  local palabras = {}
+  for palabra in texto:gmatch("%S+") do table.insert(palabras, palabra) end
+  for i = 1, #palabras - 1 do
+    -- donde ya hay puntuación no hace falta otra pausa
+    if not palabras[i]:match("%p$") and math.random() < probabilidad then
+      palabras[i] = palabras[i] .. (math.random() < 0.6 and "," or "...")
+    end
+  end
+  return table.concat(palabras, " ")
+end
+
 -- convierte el texto en un .wav con eSpeak y lo pasa a 48 kHz con sox.
 -- corre en segundo plano (norns.system_cmd) para que la pantalla y las
 -- perillas no se congelen mientras tanto.
@@ -605,56 +692,140 @@ local function renderizar(texto, al_terminar)
   turno = 3 - turno
   local txt, crudo, wav = base .. ".txt", base .. ".raw.wav", base .. ".wav"
 
+  local motor = params:get("motor")
+
+  -- cada frase sale con su propia rapidez y sus propios silencios:
+  -- el azar los mueve alrededor del valor que pusiste
+  local rapidez = params:get("rapidez")
+    * 2 ^ (azar() * params:get("azar_rapidez") + lfo("rapidez"))
+  rapidez = util.clamp(math.floor(rapidez), 80, 450)
+  local silencios = util.clamp(
+    params:get("silencios") + azar() * params:get("azar_silencios"), 0, 1)
+  texto = con_silencios(texto, silencios)
+
   local f = io.open(txt, "wb")
   if not f then
     al_terminar(nil, "no pude escribir el texto")
     return
   end
-  -- "\1<n>R" le dice a eSpeak cuánta entonación usar (0 = robot plano)
-  f:write(string.format("\1%dR", params:get("entonacion")) .. texto)
+  if motor == 1 then
+    -- "\1<n>R" le dice a eSpeak cuánta entonación usar (0 = robot plano)
+    texto = string.format("\1%dR", params:get("entonacion")) .. texto
+  end
+  f:write(texto)
   f:close()
   os.remove(wav)
 
-  local cmd = string.format(
-    "espeak-ng -v %s -s %d -p %d -f %s -w %s && sox -G %s -r 48000 %s",
-    params:string("voz"), params:get("rapidez"), params:get("tono"),
-    comillas(txt), comillas(crudo), comillas(crudo), comillas(wav))
+  -- tono y rapidez valen para los tres motores: 50 de tono y 140
+  -- palabras por minuto son "normal", y cada motor lo traduce a lo suyo
+  local tono = 2 ^ ((params:get("tono") - 50) / 50)   -- 0.5x .. 2x
+  local lentitud = 140 / rapidez                       -- >1 = más lento
+  local cmd
+  if motor == 1 then
+    cmd = string.format("espeak-ng -v %s -s %d -p %d -f %s -w %s",
+      params:string("voz"), rapidez, params:get("tono"),
+      comillas(txt), comillas(crudo))
+  elseif motor == 2 then
+    cmd = string.format(
+      "flite -voice %s --setf duration_stretch=%.2f --setf f0_shift=%.2f"
+        .. " -f %s -o %s",
+      params:string("voz_flite"), lentitud, tono, comillas(txt), comillas(crudo))
+  else
+    local modelo = DIR_PIPER .. params:string("voz_piper")
+    cmd = string.format("piper --model %s --length_scale %.2f --output_file %s < %s",
+      comillas(modelo), lentitud, comillas(crudo), comillas(txt))
+  end
+  cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s",
+    comillas(crudo), comillas(wav))
 
   norns.system_cmd(cmd .. " 2>&1", function()
     if util.file_exists(wav) then
       al_terminar(wav)
     else
-      al_terminar(nil, "falló eSpeak")
+      al_terminar(nil, "falló " .. MOTORES[motor])
     end
   end)
 end
 
--- carga el .wav en el buffer de softcut y lo reproduce con la voz 1
+-- el tipo de filtro y la resonancia, iguales en todas las voces
+local function aplicar_filtro()
+  local tipo = params:get("filtro")
+  -- resonancia 0..1 -> rq de 2 (suave) a 0.1 (silba)
+  local rq = util.linlin(0, 1, 2, 0.1, params:get("resonancia"))
+  for _, v in ipairs(VOCES_SC) do
+    softcut.post_filter_dry(v, tipo == 1 and 1 or 0)
+    softcut.post_filter_lp(v, tipo == 2 and 1 or 0)
+    softcut.post_filter_bp(v, tipo == 3 and 1 or 0)
+    softcut.post_filter_hp(v, tipo == 4 and 1 or 0)
+    softcut.post_filter_rq(v, rq)
+  end
+end
+
+-- la frecuencia de corte; el LFO la mueve hasta 3 octavas arriba o abajo
+local function aplicar_corte()
+  local fc = util.clamp(params:get("corte") * 2 ^ (lfo("corte") * 3), 20, 18000)
+  for _, v in ipairs(VOCES_SC) do softcut.post_filter_fc(v, fc) end
+end
+
+-- carga el .wav en el buffer de softcut y lo reproduce con la voz seca
 local function sonar(wav)
   local _, muestras, sr = audio.file_info(wav)
   if not muestras or muestras == 0 then return end
   local dur = muestras / sr
 
-  softcut.buffer_clear_region_channel(1, 0, dur + 1)
+  softcut.buffer_clear_region_channel(1, 0, math.max(dur, dur_frase) + 1)
   softcut.buffer_read_mono(wav, 0, 0, -1, 1, 1)
 
   clock.run(function()
     clock.sleep(0.1)  -- tiempo para que el archivo termine de cargarse
+    dur_frase = dur
+    cabeza = 0
     local rate = VELOCIDADES[params:get("velocidad")]
-    softcut.loop_start(1, 0)
-    softcut.loop_end(1, dur)
-    softcut.loop(1, params:get("repetir") - 1)
-    softcut.rate(1, rate)
+    softcut.loop_start(VOZ_SECA, 0)
+    softcut.loop_end(VOZ_SECA, dur)
+    softcut.loop(VOZ_SECA, params:get("repetir") - 1)
+    softcut.rate(VOZ_SECA, rate)
     -- en reversa empieza desde el final
-    softcut.position(1, rate < 0 and dur or 0)
-    softcut.play(1, 1)
+    softcut.position(VOZ_SECA, rate < 0 and dur or 0)
+    softcut.play(VOZ_SECA, 1)
   end)
+end
+
+-- un grano: un pedacito de la frase que suena una sola vez,
+-- con su propio tono y su propio lugar en el estéreo
+local function disparar_grano()
+  local v = GRANOS[siguiente_grano]
+  siguiente_grano = siguiente_grano % #GRANOS + 1
+
+  local tam = params:get("tamano") * 2 ^ (lfo("tamaño") * 2)
+  tam = util.clamp(tam, 0.01, dur_frase)
+  -- el grano sale de donde va la cabeza, más un desvío al azar
+  local desvio = (math.random() * 2 - 1) * params:get("dispersion") * dur_frase
+  local inicio = util.clamp((cabeza + desvio) % dur_frase, 0, dur_frase - tam)
+  local semi = params:get("tono_granos") + lfo("tono granos") * 12
+    + (math.random() * 2 - 1) * params:get("variacion")
+
+  -- el fade de softcut hace de envolvente: el grano entra y sale suave
+  softcut.fade_time(v, math.min(tam * 0.3, 0.1))
+  softcut.loop_start(v, inicio)
+  softcut.loop_end(v, inicio + tam)
+  softcut.rate(v, 2 ^ (semi / 12))
+  softcut.pan(v, (math.random() * 2 - 1) * params:get("estereo"))
+  softcut.position(v, inicio)
+  softcut.play(v, 1)
+
+  table.insert(marcas, { x = inicio / dur_frase, vida = 1 })
+  if #marcas > 16 then table.remove(marcas, 1) end
 end
 
 local function decir()
   if ocupado then return end
-  if not deps_ok then
-    estado = "falta espeak/sox"
+  local motor = params:get("motor")
+  local falta = not hay.sox and "sox"
+    or not hay[PROGRAMA_DE_MOTOR[motor]] and MOTORES[motor]
+    or motor == 3 and voces_piper[1] == "-" and "voz piper"
+  if falta then
+    estado = "falta " .. falta
     redraw()
     return
   end
@@ -689,6 +860,10 @@ end
 -- parámetros
 -- ---------------------------------------------------------------------------
 
+local function formato(patron)
+  return function(p) return string.format(patron, p:get()) end
+end
+
 local function agregar_parametros()
   params:add_separator("voxbox", "VOXBOX")
 
@@ -700,7 +875,6 @@ local function agregar_parametros()
     if voz_en_espanol ~= (x == 1) then
       params:set("voz", VOZ_DE_IDIOMA[x])
     end
-    redraw()
   end)
 
   -- el tema es un número y no una lista de nombres, porque los nombres
@@ -708,22 +882,85 @@ local function agregar_parametros()
   params:add_number("tema", "tema", 1, #IDIOMAS[1], 1, function(p)
     return temas()[p:get()].nombre
   end)
-  params:set_action("tema", function() redraw() end)
   params:add_option("mezclar", "mezclar temas", { "no", "sí" }, 1)
   params:add_option("intervalo", "automático cada", INTERVALO_NOMBRES, 4)
 
-  params:add_option("voz", "voz", VOCES, 2)
+  params:add_option("motor", "motor de voz", MOTORES, 1)
+  params:add_option("voz", "voz eSpeak", VOCES, 2)
+  params:add_option("voz_flite", "voz flite (inglés)", VOCES_FLITE, 1)
+  params:add_option("voz_piper", "voz Piper", voces_piper, 1)
   params:add_number("tono", "tono", 0, 99, 50)
   params:add_number("entonacion", "entonación", 0, 100, 50)
-  params:add_number("rapidez", "rapidez (palabras/min)", 80, 300, 140)
+  params:add_separator("voxbox_habla", "HABLA")
+  params:add_number("rapidez", "rapidez (palabras/min)", 80, 450, 140)
+  -- probabilidad de una pausa entre cada par de palabras
+  params:add_control("silencios", "silencios",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  -- cuánto cambia cada frase al azar: rapidez hasta el doble o la mitad,
+  -- silencios hasta todo o nada
+  params:add_control("azar_rapidez", "azar en rapidez",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  params:add_control("azar_silencios", "azar en silencios",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
 
   params:add_option("velocidad", "reproducción", VELOCIDAD_NOMBRES, 4)
   params:add_option("repetir", "repetir en loop", { "no", "sí" }, 1)
-  params:set_action("repetir", function(x) softcut.loop(1, x - 1) end)
-  params:add_control("volumen", "volumen",
-    controlspec.new(0, 1, "lin", 0, 0.8, ""))
-  params:set_action("volumen", function(x) softcut.level(1, x) end)
+  params:set_action("repetir", function(x) softcut.loop(VOZ_SECA, x - 1) end)
+  params:add_control("volumen", "volumen voz",
+    controlspec.new(0, 1, "lin", 0, 0.8, ""), formato("%.2f"))
+  params:set_action("volumen", function(x) softcut.level(VOZ_SECA, x) end)
 
+  params:add_separator("voxbox_filtro", "FILTRO")
+  params:add_option("filtro", "tipo", FILTROS, 2)
+  params:set_action("filtro", aplicar_filtro)
+  params:add_control("corte", "corte",
+    controlspec.new(60, 16000, "exp", 0, 8000, "hz"), function(p)
+      local hz = p:get()
+      return hz >= 1000 and string.format("%.1fk", hz / 1000)
+        or string.format("%d", hz)
+    end)
+  params:set_action("corte", aplicar_corte)
+  params:add_control("resonancia", "resonancia",
+    controlspec.new(0, 1, "lin", 0, 0.2, ""), formato("%.2f"))
+  params:set_action("resonancia", aplicar_filtro)
+
+  params:add_separator("voxbox_granos", "GRANOS")
+  -- en 0 no se dispara ningún grano
+  params:add_control("granos", "volumen granos",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  params:set_action("granos", function(x)
+    for _, v in ipairs(GRANOS) do softcut.level(v, x) end
+  end)
+  params:add_control("densidad", "granos por segundo",
+    controlspec.new(1, 40, "exp", 0, 8, "/s"), formato("%.1f/s"))
+  params:add_control("tamano", "tamaño del grano",
+    controlspec.new(0.02, 1, "exp", 0, 0.12, "s"), function(p)
+      return string.format("%dms", math.floor(p:get() * 1000))
+    end)
+  params:add_control("dispersion", "dispersión",
+    controlspec.new(0, 1, "lin", 0, 0.1, ""), formato("%.2f"))
+  -- 1 = recorre la frase a su velocidad, 0 = congela, negativo = hacia atrás
+  params:add_control("avance", "avance",
+    controlspec.new(-2, 2, "lin", 0.05, 1, "x"), function(p)
+      local x = p:get()
+      return math.abs(x) < 0.01 and "congelado" or string.format("%.2fx", x)
+    end)
+  params:add_number("tono_granos", "tono granos", -24, 24, 0, formato("%dst"))
+  params:add_control("variacion", "variación de tono",
+    controlspec.new(0, 12, "lin", 0, 0, "st"), formato("%.1fst"))
+  params:add_control("estereo", "apertura estéreo",
+    controlspec.new(0, 1, "lin", 0, 0.6, ""), formato("%.2f"))
+
+  params:add_separator("voxbox_lfo", "LFO")
+  params:add_option("lfo_destino", "destino", LFO_DESTINOS, 1)
+  params:set_action("lfo_destino", function() aplicar_corte() end)
+  params:add_control("lfo_vel", "velocidad",
+    controlspec.new(0.02, 10, "exp", 0, 0.25, "hz"), formato("%.2fhz"))
+  params:add_control("lfo_prof", "profundidad",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  params:set_action("lfo_prof", function() aplicar_corte() end)
+
+  params:add_separator("voxbox_guardar", "")
   params:add_trigger("guardar", "guardar última frase")
   params:set_action("guardar", guardar)
 end
@@ -736,20 +973,30 @@ function init()
   util.make_dir(DATA_DIR)
   util.make_dir(AUDIO_DIR)
 
-  deps_ok = hay_programa("espeak-ng") and hay_programa("sox")
-  if not deps_ok then estado = "falta espeak/sox" end
+  for _, programa in ipairs({ "sox", "espeak-ng", "flite", "piper" }) do
+    hay[programa] = hay_programa(programa)
+  end
+  -- las voces de Piper que haya en su carpeta
+  local lista = util.os_capture("ls " .. DIR_PIPER .. " 2>/dev/null", true)
+  local encontradas = {}
+  for nombre in lista:gmatch("[^\n]+") do
+    if nombre:match("%.onnx$") then table.insert(encontradas, nombre) end
+  end
+  if #encontradas > 0 then voces_piper = encontradas end
 
   softcut.reset()
   audio.level_cut(1)
-  softcut.enable(1, 1)
-  softcut.buffer(1, 1)
-  softcut.level(1, 0.8)
-  softcut.pan(1, 0)
-  softcut.rec(1, 0)
-  softcut.fade_time(1, 0.01)
-  -- softcut.reset() deja en cero todas las salidas del filtro de la voz
-  -- (dry, lp, hp, bp, br); sin esto la voz suena muda
-  softcut.post_filter_dry(1, 1)
+  for _, v in ipairs(VOCES_SC) do
+    softcut.enable(v, 1)
+    softcut.buffer(v, 1)
+    softcut.level(v, 0)
+    softcut.pan(v, 0)
+    softcut.rec(v, 0)
+    softcut.loop(v, 0)
+    softcut.fade_time(v, 0.01)
+  end
+  -- ojo: softcut.reset() deja en cero todas las salidas del filtro;
+  -- aplicar_filtro() (desde params:bang) las vuelve a abrir
 
   agregar_parametros()
   params:bang()
@@ -762,16 +1009,50 @@ function init()
     end
   end)
 
-  redraw()
+  -- los granos: se disparan uno tras otro, tan seguido como diga la densidad
+  clock.run(function()
+    while true do
+      local dens = params:get("densidad") * 2 ^ (lfo("densidad") * 2)
+      local dt = 1 / util.clamp(dens, 0.5, 60)
+      clock.sleep(dt)
+      if params:get("granos") > 0 and dur_frase > 0 then
+        -- la cabeza recorre la frase; en "congelado" se queda quieta
+        cabeza = (cabeza + params:get("avance") * dt) % dur_frase
+        disparar_grano()
+      end
+    end
+  end)
+
+  -- el LFO: una onda seno lenta, 30 veces por segundo
+  clock.run(function()
+    local dt = 1 / 30
+    while true do
+      clock.sleep(dt)
+      lfo_fase = (lfo_fase + params:get("lfo_vel") * dt) % 1
+      lfo_valor = math.sin(lfo_fase * 2 * math.pi) * params:get("lfo_prof")
+      if LFO_DESTINOS[params:get("lfo_destino")] == "corte" then
+        aplicar_corte()
+      end
+      for _, m in ipairs(marcas) do m.vida = m.vida - dt * 1.5 end
+    end
+  end)
+
+  -- la pantalla se redibuja sola, 15 veces por segundo
+  clock.run(function()
+    while true do
+      clock.sleep(1 / 15)
+      redraw()
+    end
+  end)
 end
 
 function enc(n, d)
   if n == 1 then
-    params:delta("tema", d)
+    pagina = util.clamp(pagina + d, 1, #PAGINAS)
   elseif n == 2 then
-    params:delta("tono", d)
+    params:delta(PAGINAS[pagina].e2, d)
   elseif n == 3 then
-    params:delta("intervalo", d)
+    params:delta(PAGINAS[pagina].e3, d)
   end
   redraw()
 end
@@ -803,38 +1084,73 @@ local function partir(texto, ancho)
   return lineas
 end
 
+-- "etiqueta valor" de un parámetro, para la parte de abajo
+local function texto_param(id)
+  local etiqueta = ETIQUETAS[id]
+  local valor = params:string(id)
+  return etiqueta == "" and valor or (etiqueta .. " " .. valor)
+end
+
 function redraw()
   screen.clear()
   screen.font_face(1)
   screen.font_size(8)
 
-  -- arriba: tema, y si está en automático, cada cuánto
+  -- arriba: la página y el tema
+  local pg = PAGINAS[pagina]
   screen.level(15)
-  screen.move(0, 8)
-  local tema = params:get("mezclar") == 2 and "mezcla" or params:string("tema")
-  screen.text(tema)
-  screen.move(128, 8)
-  screen.level(auto and 15 or 3)
-  screen.text_right(auto and params:string("intervalo") or "manual")
+  screen.move(0, 7)
+  screen.text(pg.nombre)
+  screen.level(3)
+  screen.text(" " .. pagina .. "/" .. #PAGINAS)
+  screen.move(128, 7)
+  screen.text_right(params:get("mezclar") == 2 and "mezcla"
+    or params:string("tema"))
 
-  -- en medio: la frase
-  screen.level(12)
+  -- en medio: la frase, hasta tres líneas
+  screen.level(10)
   for i, linea in ipairs(partir(frase, 124)) do
-    if i > 4 then break end
-    screen.move(2, 20 + (i - 1) * 10)
+    if i > 3 then break end
+    screen.move(2, 18 + (i - 1) * 9)
     screen.text(linea)
   end
 
-  -- abajo: tono y estado
+  -- la frase como una línea: la cabeza y los granos que van saliendo
+  screen.level(1)
+  screen.move(0, 44.5)
+  screen.line(128, 44.5)
+  screen.stroke()
+  if params:get("granos") > 0 and dur_frase > 0 then
+    for _, m in ipairs(marcas) do
+      if m.vida > 0 then
+        screen.level(math.max(1, math.floor(m.vida * 12)))
+        screen.rect(math.floor(m.x * 126), 43, 2, 3)
+        screen.fill()
+      end
+    end
+    screen.level(15)
+    screen.rect(math.floor(cabeza / dur_frase * 127), 40, 1, 9)
+    screen.fill()
+  end
+
+  -- abajo: lo que mueven E2 y E3 en esta página
+  screen.level(15)
+  screen.move(0, 55)
+  screen.text(texto_param(pg.e2))
+  screen.move(128, 55)
+  screen.text_right(texto_param(pg.e3))
+
+  -- y el estado
   screen.level(4)
-  screen.move(0, 62)
-  screen.text("tono " .. params:get("tono"))
-  screen.move(128, 62)
-  screen.text_right(estado)
+  screen.move(0, 63)
+  screen.text(estado)
+  screen.move(128, 63)
+  screen.level(auto and 15 or 3)
+  screen.text_right(auto and "auto" or "manual")
 
   screen.update()
 end
 
 function cleanup()
-  softcut.play(1, 0)
+  for _, v in ipairs(VOCES_SC) do softcut.play(v, 0) end
 end
