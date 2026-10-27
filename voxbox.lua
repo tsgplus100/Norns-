@@ -1,4 +1,4 @@
--- VOXBOX 1.3
+-- VOXBOX 1.4
 -- frases automáticas habladas
 -- con filtro, granos y LFO
 --
@@ -10,6 +10,8 @@
 --
 -- páginas:
 -- VOZ     tema / tono
+-- MODO    frases, caracteres
+--         o mezcla / cantidad
 -- TIMBRE  siseo / entonación
 -- HABLA   rapidez / silencios
 -- AZAR    azar rapidez /
@@ -619,6 +621,7 @@ local ECO_INICIO = 100
 -- E1 elige la página; E2 y E3 cambian sus dos parámetros
 local PAGINAS = {
   { nombre = "VOZ",    e2 = "tema",      e3 = "tono" },
+  { nombre = "MODO",   e2 = "modo",      e3 = "cantidad" },
   { nombre = "TIMBRE", e2 = "siseo",     e3 = "entonacion" },
   { nombre = "HABLA",  e2 = "rapidez",   e3 = "silencios" },
   { nombre = "AZAR",   e2 = "azar_rapidez", e3 = "azar_silencios" },
@@ -638,7 +641,7 @@ local ETIQUETAS = {
   granos = "granos", densidad = "dens", tamano = "tam", dispersion = "disp",
   avance = "avance", tono_granos = "tono", lfo_vel = "vel", lfo_prof = "prof",
   intervalo = "", entonacion = "enton", rapidez = "rap", siseo = "siseo",
-  volumen = "voz", eco = "eco", repeticiones = "rep", pausas = "pausas",
+  modo = "", cantidad = "cant", volumen = "voz", eco = "eco", repeticiones = "rep", pausas = "pausas",
   espacio_eco = "esp", azar_eco = "azar",
   variacion = "var",
   silencios = "sil", azar_rapidez = "azar r", azar_silencios = "azar s",
@@ -919,6 +922,66 @@ local function disparar_grano()
   if #marcas > 16 then table.remove(marcas, 1) end
 end
 
+-- ---------------------------------------------------------------------------
+-- modo caracteres: números, letras y símbolos sueltos
+-- ---------------------------------------------------------------------------
+
+-- los nombres de las letras, para que cada motor las diga como letra
+-- y no intente leerlas como palabra
+local LETRAS = {
+  { "a", "be", "ce", "de", "e", "efe", "ge", "hache", "i", "jota", "ka",
+    "ele", "eme", "ene", "o", "pe", "cu", "erre", "ese", "te", "u", "uve",
+    "uve doble", "equis", "i griega", "zeta" },
+  { "ay", "bee", "see", "dee", "ee", "ef", "gee", "aitch", "eye", "jay",
+    "kay", "el", "em", "en", "oh", "pee", "cue", "ar", "ess", "tee", "you",
+    "vee", "double you", "ex", "why", "zee" },
+}
+
+-- símbolos: { cómo se ve en pantalla, cómo se dice en español, en inglés }.
+-- las letras griegas van escritas porque la pantalla no las dibuja
+local SIMBOLOS = {
+  { "+", "más", "plus" }, { "-", "menos", "minus" }, { "=", "igual", "equals" },
+  { "%", "por ciento", "percent" }, { "/", "barra", "slash" },
+  { "*", "asterisco", "asterisk" }, { "#", "numeral", "hash" },
+  { "@", "arroba", "at" }, { "<", "menor que", "less than" },
+  { ">", "mayor que", "greater than" }, { "^", "elevado a", "to the power of" },
+  { "~", "aproximadamente", "approximately" }, { "pi", "pi", "pi" },
+  { "delta", "delta", "delta" }, { "lambda", "lambda", "lambda" },
+  { "omega", "omega", "omega" }, { "psi", "psi", "psi" },
+  { "sigma", "sigma", "sigma" }, { "inf", "infinito", "infinity" },
+  { "raiz", "raíz", "root" },
+}
+
+-- arma una secuencia de caracteres sueltos. devuelve dos textos: el que se
+-- ve en pantalla ("7  K  delta") y el que se dice ("siete. ka. delta.")
+local function caracteres(cantidad)
+  local idioma = params:get("idioma")
+  local tipo = params:get("tipo_caracteres")   -- 1 todo, 2 números, 3 letras, 4 símbolos
+  local vistos, dichos = {}, {}
+  for _ = 1, cantidad do
+    local t = tipo == 1 and math.random(3) or tipo - 1
+    local visto, dicho
+    if t == 1 then
+      -- casi siempre un dígito; a veces un número más largo
+      visto = tostring(math.random() < 0.75 and math.random(0, 9)
+        or math.random(10, 999))
+      dicho = visto
+    elseif t == 2 then
+      local i = math.random(26)
+      visto = string.char(64 + i)
+      dicho = LETRAS[idioma][i]
+    else
+      local simbolo = SIMBOLOS[math.random(#SIMBOLOS)]
+      visto = simbolo[1]
+      dicho = simbolo[idioma + 1]
+    end
+    table.insert(vistos, visto)
+    table.insert(dichos, dicho)
+  end
+  -- un punto después de cada uno los deja aislados, con una pausa clara
+  return table.concat(vistos, "  "), table.concat(dichos, ". ") .. "."
+end
+
 local function decir()
   if ocupado then return end
   local motor = params:get("motor")
@@ -932,11 +995,20 @@ local function decir()
   end
 
   ocupado = true
-  frase = frases.generar(temas(), params:get("tema"), params:get("mezclar") == 2)
+  -- MODO: frases, caracteres sueltos, o una de las dos al azar
+  local modo = params:get("modo")
+  if modo == 3 then modo = math.random(2) end
+  local texto
+  if modo == 2 then
+    frase, texto = caracteres(params:get("cantidad"))
+  else
+    frase = frases.generar(temas(), params:get("tema"), params:get("mezclar") == 2)
+    texto = frase
+  end
   estado = "pensando..."
   redraw()
 
-  renderizar(frase, function(wav, problema, wav_eco)
+  renderizar(texto, function(wav, problema, wav_eco)
     ocupado = false
     if wav then
       ultimo_wav = wav
@@ -984,6 +1056,10 @@ local function agregar_parametros()
     return temas()[p:get()].nombre
   end)
   params:add_option("mezclar", "mezclar temas", { "no", "sí" }, 1)
+  params:add_option("modo", "modo", { "frases", "caracteres", "mezcla" }, 1)
+  params:add_option("tipo_caracteres", "caracteres",
+    { "todo", "números", "letras", "símbolos" }, 1)
+  params:add_number("cantidad", "caracteres por turno", 1, 12, 4)
   params:add_option("intervalo", "automático cada", INTERVALO_NOMBRES, 4)
   -- probabilidad de que un turno del modo automático se quede callado
   params:add_control("pausas", "pausas (auto)",
