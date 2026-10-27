@@ -747,6 +747,9 @@ function init()
   softcut.pan(1, 0)
   softcut.rec(1, 0)
   softcut.fade_time(1, 0.01)
+  -- softcut.reset() deja en cero todas las salidas del filtro de la voz
+  -- (dry, lp, hp, bp, br); sin esto la voz suena muda
+  softcut.post_filter_dry(1, 1)
 
   agregar_parametros()
   params:bang()
