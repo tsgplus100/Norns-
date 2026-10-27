@@ -1,4 +1,4 @@
--- VOXBOX 1.4
+-- VOXBOX 1.5
 -- frases automáticas habladas
 -- con filtro, granos y LFO
 --
@@ -12,6 +12,7 @@
 -- VOZ     tema / tono
 -- MODO    frases, caracteres
 --         o mezcla / cantidad
+-- MOTOR   motor / su voz
 -- TIMBRE  siseo / entonación
 -- HABLA   rapidez / silencios
 -- AZAR    azar rapidez /
@@ -35,12 +36,12 @@
 -- los granos y el eco empiezan
 -- en 0: súbelos en MEZCLA y ECO
 --
--- necesita sox y al menos un
--- motor: espeak-ng, flite o
--- piper (los instala el
--- script speech, o por ssh:
--- sudo apt install
---   espeak-ng flite sox)
+-- motores: eSpeak, MBROLA,
+-- flite, Piper, Pico, Festival,
+-- SAM y DECtalk. instálalos
+-- con instalar_voces.sh
+-- (junto a este script en
+-- GitHub)
 --
 -- todo está en este archivo:
 -- las palabras en español y
@@ -601,10 +602,41 @@ local INTERVALOS = { 0.5, 1, 2, 4, 8, 16 }   -- en tiempos (beats)
 local FILTROS = { "abierto", "pasa bajos", "pasa banda", "pasa altos" }
 -- motores de voz. flite solo habla inglés; Piper necesita una voz
 -- (.onnx y su .onnx.json) en ~/.local/share/piper/voices/
-local MOTORES = { "eSpeak", "flite", "Piper" }
-local PROGRAMA_DE_MOTOR = { "espeak-ng", "flite", "piper" }
+-- MOTORES DE VOZ. los que no vienen con el norns se instalan con
+-- instalar_voces.sh (está junto a este script en GitHub)
+local MOTORES = { "eSpeak", "MBROLA", "flite", "Piper", "Pico", "Festival",
+  "SAM", "DECtalk" }
+local PROGRAMA_DE_MOTOR = { "espeak-ng", "mbrola", "flite", "piper",
+  "pico2wave", "text2wave", "sam", "dectalk" }
+-- el parámetro que cambia E3 en la página MOTOR, según el motor
+local VOZ_DE_MOTOR = { "variante", "voz_mbrola", "voz_flite", "voz_piper",
+  "voz_pico", "voz_festival", "voz_sam", "voz_dectalk" }
+
+-- eSpeak: las variantes Klatt usan el sintetizador de Dennis Klatt (1980),
+-- el mismo modelo que DECtalk; croak es una voz ronca
+local VARIANTES = { "normal", "klatt", "klatt2", "klatt3", "klatt4", "klatt5",
+  "klatt6", "croak" }
+-- flite solo habla inglés
 local VOCES_FLITE = { "kal", "slt", "rms", "awb" }
 local DIR_PIPER = "/home/we/.local/share/piper/voices/"
+local DIR_MBROLA = "/usr/share/mbrola/"
+-- Pico (el TTS de los primeros Android): "auto" sigue al idioma; los demás
+-- leen el texto con el acento de otro idioma
+local VOCES_PICO = { "auto", "es-ES", "en-US", "en-GB", "fr-FR", "de-DE", "it-IT" }
+local VOCES_FESTIVAL = { "auto", "el (español)", "kal (inglés)" }
+-- SAM (Commodore 64, 1982), con los valores de su manual original:
+-- { nombre, speed, pitch, throat, mouth }. solo habla inglés
+local VOCES_SAM = {
+  { "SAM", 72, 64, 128, 128 },
+  { "Elf", 72, 64, 110, 160 },
+  { "Little Robot", 92, 60, 190, 190 },
+  { "Stuffy Guy", 82, 72, 110, 105 },
+  { "Little Old Lady", 82, 32, 145, 145 },
+  { "Extra-Terrestrial", 100, 64, 150, 200 },
+}
+-- DECtalk (1984): Paul es la voz de Stephen Hawking
+local VOCES_DECTALK = { "Paul", "Betty", "Harry", "Frank", "Dennis", "Kit",
+  "Ursula", "Rita", "Wendy" }
 local LFO_DESTINOS = { "corte", "tamaño", "densidad", "tono granos", "rapidez",
   "siseo", "eco" }
 
@@ -622,6 +654,9 @@ local ECO_INICIO = 100
 local PAGINAS = {
   { nombre = "VOZ",    e2 = "tema",      e3 = "tono" },
   { nombre = "MODO",   e2 = "modo",      e3 = "cantidad" },
+  -- E3 cambia la voz del motor que esté elegido
+  { nombre = "MOTOR",  e2 = "motor",
+    e3 = function() return VOZ_DE_MOTOR[params:get("motor")] end },
   { nombre = "TIMBRE", e2 = "siseo",     e3 = "entonacion" },
   { nombre = "HABLA",  e2 = "rapidez",   e3 = "silencios" },
   { nombre = "AZAR",   e2 = "azar_rapidez", e3 = "azar_silencios" },
@@ -641,7 +676,9 @@ local ETIQUETAS = {
   granos = "granos", densidad = "dens", tamano = "tam", dispersion = "disp",
   avance = "avance", tono_granos = "tono", lfo_vel = "vel", lfo_prof = "prof",
   intervalo = "", entonacion = "enton", rapidez = "rap", siseo = "siseo",
-  modo = "", cantidad = "cant", volumen = "voz", eco = "eco", repeticiones = "rep", pausas = "pausas",
+  modo = "", cantidad = "cant", motor = "", variante = "", voz_mbrola = "",
+  voz_flite = "", voz_piper = "", voz_pico = "", voz_festival = "",
+  voz_sam = "", voz_dectalk = "", volumen = "voz", eco = "eco", repeticiones = "rep", pausas = "pausas",
   espacio_eco = "esp", azar_eco = "azar",
   variacion = "var",
   silencios = "sil", azar_rapidez = "azar r", azar_silencios = "azar s",
@@ -657,6 +694,7 @@ local turno = 1           -- alterna entre dos archivos, para no
 local ultimo_wav = nil
 local hay = {}            -- qué programas están instalados
 local voces_piper = { "-" }
+local voces_mbrola = { "-" }
 
 local dur_frase = 0       -- duración de la frase cargada, en segundos
 local cabeza = 0          -- por dónde van leyendo los granos, en segundos
@@ -740,13 +778,28 @@ local function renderizar(texto, al_terminar)
     local txt, crudo, wav = nombre .. ".txt", nombre .. ".raw.wav", nombre .. ".wav"
     local f = io.open(txt, "wb")
     if not f then return nil end
-    if motor == 1 then
+    if motor <= 2 then
       -- "\1<n>R" le dice a eSpeak cuánta entonación usar (0 = robot plano)
       texto = string.format("\1%dR", params:get("entonacion")) .. texto
     end
     f:write(texto)
     f:close()
     os.remove(wav)
+
+    -- Festival y DECtalk leen el texto en latin-1, y SAM solo entiende
+    -- ASCII; iconv lo convierte (las letras con acento pierden el acento
+    -- donde no hay forma de escribirlas)
+    local latin1 = nombre .. ".latin1.txt"
+    local a_latin1 = string.format("iconv -f UTF-8 -t ISO-8859-1//TRANSLIT %s > %s",
+      comillas(txt), comillas(latin1))
+    local ascii = string.format("$(iconv -f UTF-8 -t ASCII//TRANSLIT %s)",
+      comillas(txt))
+    -- lo que sox le hace después a los motores que no saben cambiar
+    -- solos su tono o su rapidez
+    local con_tono = string.format(" pitch %d", math.floor(
+      (params:get("tono") - 50) / 50 * 1200))
+    local con_rapidez = string.format(" tempo -s %.2f", rapidez / 140)
+    local efectos = ""
 
     local cmd
     if motor == 1 then
@@ -758,32 +811,71 @@ local function renderizar(texto, al_terminar)
           params:string("voz"), variante, rapidez, params:get("tono"),
           comillas(txt), comillas(salida))
       end
+      local variante = params:get("variante") == 1 and ""
+        or ("+" .. params:string("variante"))
       if siseo < 0.02 then
-        cmd = espeak("", crudo)
+        cmd = espeak(variante, crudo)
       elseif siseo > 0.98 then
         cmd = espeak("+whisper", crudo)
       else
         local normal, susurro = nombre .. ".normal.wav", nombre .. ".susurro.wav"
         -- el susurro suena más bajo, así que entra con más ganancia
-        cmd = espeak("", normal) .. " && " .. espeak("+whisper", susurro)
+        cmd = espeak(variante, normal) .. " && " .. espeak("+whisper", susurro)
           .. string.format(" && sox -m -v %.2f %s -v %.2f %s %s",
             1 - siseo, comillas(normal), siseo * 2, comillas(susurro),
             comillas(crudo))
       end
     elseif motor == 2 then
+      -- MBROLA usa eSpeak para leer el texto y sus voces para sonar
+      cmd = string.format("espeak-ng -v mb-%s -s %d -p %d -f %s -w %s",
+        params:string("voz_mbrola"), rapidez, params:get("tono"),
+        comillas(txt), comillas(crudo))
+    elseif motor == 3 then
       cmd = string.format(
         "flite -voice %s --setf duration_stretch=%.2f --setf f0_shift=%.2f"
           .. " -f %s -o %s",
         params:string("voz_flite"), lentitud, tono, comillas(txt), comillas(crudo))
-    else
+    elseif motor == 4 then
       local modelo = DIR_PIPER .. params:string("voz_piper")
       cmd = string.format("piper --model %s --length_scale %.2f --output_file %s < %s",
         comillas(modelo), lentitud, comillas(crudo), comillas(txt))
+      efectos = con_tono
+    elseif motor == 5 then
+      local voz = params:string("voz_pico")
+      if voz == "auto" then
+        voz = params:get("idioma") == 1 and "es-ES" or "en-US"
+      end
+      cmd = string.format("pico2wave -l %s -w %s \"$(cat %s)\"",
+        voz, comillas(crudo), comillas(txt))
+      efectos = con_tono .. con_rapidez
+    elseif motor == 6 then
+      local voz = params:get("voz_festival")
+      if voz == 1 then voz = params:get("idioma") == 1 and 2 or 3 end
+      cmd = a_latin1 .. string.format(" && text2wave -eval %s %s -o %s",
+        comillas(voz == 2 and "(voice_el_diphone)" or "(voice_kal_diphone)"),
+        comillas(latin1), comillas(crudo))
+      efectos = con_tono .. con_rapidez
+    elseif motor == 7 then
+      -- en SAM un número de speed más alto es más lento, y uno de pitch
+      -- más alto es más grave
+      local v = VOCES_SAM[params:get("voz_sam")]
+      cmd = string.format(
+        "sam -wav %s -speed %d -pitch %d -throat %d -mouth %d \"%s\"",
+        comillas(crudo), util.clamp(math.floor(v[2] * lentitud), 20, 255),
+        util.clamp(math.floor(v[3] / tono), 1, 255), v[4], v[5], ascii)
+    else
+      -- DECtalk: "sp" es español de España, "la" latinoamericano
+      local idioma = params:get("idioma") == 2 and "us"
+        or (params:string("voz") == "es" and "sp" or "la")
+      cmd = a_latin1 .. string.format(" && dectalk -l %s -s %d -r %d -fi %s -fo %s",
+        idioma, params:get("voz_dectalk") - 1, rapidez, comillas(latin1),
+        comillas(crudo))
+      efectos = con_tono
     end
     -- 48 kHz para softcut, y "norm" para que todo suene igual de fuerte,
-    -- sea normal o susurrado
-    cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s norm -3",
-      comillas(crudo), comillas(wav))
+    -- sea cual sea el motor
+    cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s%s norm -3",
+      comillas(crudo), comillas(wav), efectos)
     return cmd, wav
   end
 
@@ -987,7 +1079,9 @@ local function decir()
   local motor = params:get("motor")
   local falta = not hay.sox and "sox"
     or not hay[PROGRAMA_DE_MOTOR[motor]] and MOTORES[motor]
-    or motor == 3 and voces_piper[1] == "-" and "voz piper"
+    or motor == 2 and not hay["espeak-ng"] and "eSpeak"
+    or motor == 2 and voces_mbrola[1] == "-" and "voz mbrola"
+    or motor == 4 and voces_piper[1] == "-" and "voz piper"
   if falta then
     estado = "falta " .. falta
     redraw()
@@ -1065,10 +1159,19 @@ local function agregar_parametros()
   params:add_control("pausas", "pausas (auto)",
     controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
 
+  params:add_separator("voxbox_motor", "MOTOR")
   params:add_option("motor", "motor de voz", MOTORES, 1)
   params:add_option("voz", "voz eSpeak", VOCES, 2)
+  params:add_option("variante", "variante eSpeak", VARIANTES, 1)
+  params:add_option("voz_mbrola", "voz MBROLA", voces_mbrola, 1)
   params:add_option("voz_flite", "voz flite (inglés)", VOCES_FLITE, 1)
   params:add_option("voz_piper", "voz Piper", voces_piper, 1)
+  params:add_option("voz_pico", "voz Pico", VOCES_PICO, 1)
+  params:add_option("voz_festival", "voz Festival", VOCES_FESTIVAL, 1)
+  local nombres_sam = {}
+  for i, v in ipairs(VOCES_SAM) do nombres_sam[i] = v[1] end
+  params:add_option("voz_sam", "voz SAM (inglés)", nombres_sam, 1)
+  params:add_option("voz_dectalk", "voz DECtalk", VOCES_DECTALK, 1)
   params:add_number("tono", "tono", 0, 99, 50)
   params:add_number("entonacion", "entonación", 0, 100, 50)
   -- 0 = voz normal, 1 = susurro puro (solo con eSpeak)
@@ -1167,9 +1270,15 @@ function init()
   util.make_dir(DATA_DIR)
   util.make_dir(AUDIO_DIR)
 
-  for _, programa in ipairs({ "sox", "espeak-ng", "flite", "piper" }) do
+  hay.sox = hay_programa("sox")
+  for _, programa in ipairs(PROGRAMA_DE_MOTOR) do
     hay[programa] = hay_programa(programa)
   end
+  -- las voces de MBROLA instaladas: cada una es una carpeta (es1, us1...)
+  local carpetas = util.os_capture("ls " .. DIR_MBROLA .. " 2>/dev/null", true)
+  local mbrola = {}
+  for nombre in carpetas:gmatch("[^\n]+") do table.insert(mbrola, nombre) end
+  if #mbrola > 0 then voces_mbrola = mbrola end
   -- las voces de Piper que haya en su carpeta
   local lista = util.os_capture("ls " .. DIR_PIPER .. " 2>/dev/null", true)
   local encontradas = {}
@@ -1247,13 +1356,19 @@ function init()
   end)
 end
 
+-- en una página, E2 o E3 pueden nombrar un parámetro fijo o una función
+-- que decide cuál (la página MOTOR cambia según el motor)
+local function id_param(x)
+  return type(x) == "function" and x() or x
+end
+
 function enc(n, d)
   if n == 1 then
     pagina = util.clamp(pagina + d, 1, #PAGINAS)
   elseif n == 2 then
-    params:delta(PAGINAS[pagina].e2, d)
+    params:delta(id_param(PAGINAS[pagina].e2), d)
   elseif n == 3 then
-    params:delta(PAGINAS[pagina].e3, d)
+    params:delta(id_param(PAGINAS[pagina].e3), d)
   end
   redraw()
 end
@@ -1337,9 +1452,9 @@ function redraw()
   -- abajo: lo que mueven E2 y E3 en esta página
   screen.level(15)
   screen.move(0, 55)
-  screen.text(texto_param(pg.e2))
+  screen.text(texto_param(id_param(pg.e2)))
   screen.move(128, 55)
-  screen.text_right(texto_param(pg.e3))
+  screen.text_right(texto_param(id_param(pg.e3)))
 
   -- y el estado
   screen.level(4)
