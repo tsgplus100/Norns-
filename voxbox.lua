@@ -1,4 +1,4 @@
--- VOXBOX 1.2
+-- VOXBOX 1.3
 -- frases automáticas habladas
 -- con filtro, granos y LFO
 --
@@ -14,12 +14,15 @@
 -- HABLA   rapidez / silencios
 -- AZAR    azar rapidez /
 --         azar silencios
+-- ECO     eco / repeticiones
+-- ECO 2   espacio / azar eco
 -- FILTRO  corte / resonancia
--- GRANOS  volumen / densidad
--- GRANO   tamaño / dispersión
--- AVANCE  avance / tono granos
+-- MEZCLA  voz / granos
+-- GRANOS  densidad / tamaño
+-- MOVIM.  avance / dispersión
+-- TONO G  tono / variación
 -- LFO     velocidad / profundidad
--- AUTO    cada cuánto / volumen
+-- AUTO    cada cuánto / pausas
 --
 -- más opciones en
 -- PARAMETERS > VOXBOX
@@ -27,8 +30,8 @@
 -- tipo de filtro, destino
 -- del LFO...)
 --
--- los granos empiezan en 0:
--- súbelos en la página GRANOS
+-- los granos y el eco empiezan
+-- en 0: súbelos en MEZCLA y ECO
 --
 -- necesita sox y al menos un
 -- motor: espeak-ng, flite o
@@ -601,13 +604,17 @@ local PROGRAMA_DE_MOTOR = { "espeak-ng", "flite", "piper" }
 local VOCES_FLITE = { "kal", "slt", "rms", "awb" }
 local DIR_PIPER = "/home/we/.local/share/piper/voices/"
 local LFO_DESTINOS = { "corte", "tamaño", "densidad", "tono granos", "rapidez",
-  "siseo" }
+  "siseo", "eco" }
 
 -- voces de softcut: la 1 dice la frase tal cual,
 -- de la 2 a la 5 disparan los granos por turnos
 local VOZ_SECA = 1
 local GRANOS = { 2, 3, 4, 5 }
-local VOCES_SC = { 1, 2, 3, 4, 5 }
+-- y la 6 repite la última palabra (el eco)
+local VOZ_ECO = 6
+local VOCES_SC = { 1, 2, 3, 4, 5, 6 }
+-- el eco vive en el segundo 100 del buffer, lejos de la frase
+local ECO_INICIO = 100
 
 -- E1 elige la página; E2 y E3 cambian sus dos parámetros
 local PAGINAS = {
@@ -615,12 +622,15 @@ local PAGINAS = {
   { nombre = "TIMBRE", e2 = "siseo",     e3 = "entonacion" },
   { nombre = "HABLA",  e2 = "rapidez",   e3 = "silencios" },
   { nombre = "AZAR",   e2 = "azar_rapidez", e3 = "azar_silencios" },
+  { nombre = "ECO",    e2 = "eco",       e3 = "repeticiones" },
+  { nombre = "ECO 2",  e2 = "espacio_eco", e3 = "azar_eco" },
   { nombre = "FILTRO", e2 = "corte",     e3 = "resonancia" },
-  { nombre = "GRANOS", e2 = "granos",    e3 = "densidad" },
-  { nombre = "GRANO",  e2 = "tamano",    e3 = "dispersion" },
-  { nombre = "AVANCE", e2 = "avance",    e3 = "tono_granos" },
+  { nombre = "MEZCLA", e2 = "volumen",   e3 = "granos" },
+  { nombre = "GRANOS", e2 = "densidad",  e3 = "tamano" },
+  { nombre = "MOVIM.", e2 = "avance",    e3 = "dispersion" },
+  { nombre = "TONO G", e2 = "tono_granos", e3 = "variacion" },
   { nombre = "LFO",    e2 = "lfo_vel",   e3 = "lfo_prof" },
-  { nombre = "AUTO",   e2 = "intervalo", e3 = "volumen" },
+  { nombre = "AUTO",   e2 = "intervalo", e3 = "pausas" },
 }
 -- nombres cortos para que quepan abajo en la pantalla
 local ETIQUETAS = {
@@ -628,7 +638,9 @@ local ETIQUETAS = {
   granos = "granos", densidad = "dens", tamano = "tam", dispersion = "disp",
   avance = "avance", tono_granos = "tono", lfo_vel = "vel", lfo_prof = "prof",
   intervalo = "", entonacion = "enton", rapidez = "rap", siseo = "siseo",
-  volumen = "vol",
+  volumen = "voz", eco = "eco", repeticiones = "rep", pausas = "pausas",
+  espacio_eco = "esp", azar_eco = "azar",
+  variacion = "var",
   silencios = "sil", azar_rapidez = "azar r", azar_silencios = "azar s",
 }
 
@@ -649,6 +661,7 @@ local siguiente_grano = 1
 local marcas = {}         -- los últimos granos, para dibujarlos
 local lfo_fase = 0
 local lfo_valor = 0       -- de -1 a 1, ya multiplicado por la profundidad
+local reloj_eco = nil     -- el reloj que está repitiendo la última palabra
 
 -- ---------------------------------------------------------------------------
 -- sonido
@@ -688,14 +701,20 @@ local function con_silencios(texto, probabilidad)
   return table.concat(palabras, " ")
 end
 
+-- la última palabra de una frase, sin la puntuación de los bordes
+local function ultima_palabra(texto)
+  local palabra = texto:match("(%S+)%s*$") or ""
+  palabra = palabra:gsub("^%p+", "")
+  palabra = palabra:gsub("%p+$", "")
+  return palabra
+end
+
 -- convierte el texto en un .wav con eSpeak y lo pasa a 48 kHz con sox.
 -- corre en segundo plano (norns.system_cmd) para que la pantalla y las
 -- perillas no se congelen mientras tanto.
 local function renderizar(texto, al_terminar)
   local base = DATA_DIR .. "frase" .. turno
   turno = 3 - turno
-  local txt, crudo, wav = base .. ".txt", base .. ".raw.wav", base .. ".wav"
-
   local motor = params:get("motor")
 
   -- cada frase sale con su propia rapidez y sus propios silencios:
@@ -705,69 +724,88 @@ local function renderizar(texto, al_terminar)
   rapidez = util.clamp(math.floor(rapidez), 80, 450)
   local silencios = util.clamp(
     params:get("silencios") + azar() * params:get("azar_silencios"), 0, 1)
-  texto = con_silencios(texto, silencios)
-
-  local f = io.open(txt, "wb")
-  if not f then
-    al_terminar(nil, "no pude escribir el texto")
-    return
-  end
-  if motor == 1 then
-    -- "\1<n>R" le dice a eSpeak cuánta entonación usar (0 = robot plano)
-    texto = string.format("\1%dR", params:get("entonacion")) .. texto
-  end
-  f:write(texto)
-  f:close()
-  os.remove(wav)
 
   -- tono y rapidez valen para los tres motores: 50 de tono y 140
   -- palabras por minuto son "normal", y cada motor lo traduce a lo suyo
   local tono = 2 ^ ((params:get("tono") - 50) / 50)   -- 0.5x .. 2x
   local lentitud = 140 / rapidez                       -- >1 = más lento
-  local cmd
-  if motor == 1 then
-    -- SISEO: eSpeak tiene una variante "whisper" que cambia la vibración
-    -- de las cuerdas vocales por aire. para poder ir de a poco, la frase
-    -- se genera dos veces (normal y susurrada) y sox las mezcla.
-    local siseo = util.clamp(params:get("siseo") + lfo("siseo") * 0.5, 0, 1)
-    local function espeak(variante, salida)
-      return string.format("espeak-ng -v %s%s -s %d -p %d -f %s -w %s",
-        params:string("voz"), variante, rapidez, params:get("tono"),
-        comillas(txt), comillas(salida))
+  local siseo = util.clamp(params:get("siseo") + lfo("siseo") * 0.5, 0, 1)
+
+  -- escribe un texto en <nombre>.txt y devuelve el comando que lo
+  -- convierte en <nombre>.wav, más la ruta de ese .wav
+  local function comando(texto, nombre)
+    local txt, crudo, wav = nombre .. ".txt", nombre .. ".raw.wav", nombre .. ".wav"
+    local f = io.open(txt, "wb")
+    if not f then return nil end
+    if motor == 1 then
+      -- "\1<n>R" le dice a eSpeak cuánta entonación usar (0 = robot plano)
+      texto = string.format("\1%dR", params:get("entonacion")) .. texto
     end
-    if siseo < 0.02 then
-      cmd = espeak("", crudo)
-    elseif siseo > 0.98 then
-      cmd = espeak("+whisper", crudo)
+    f:write(texto)
+    f:close()
+    os.remove(wav)
+
+    local cmd
+    if motor == 1 then
+      -- SISEO: eSpeak tiene una variante "whisper" que cambia la vibración
+      -- de las cuerdas vocales por aire. para poder ir de a poco, el texto
+      -- se genera dos veces (normal y susurrado) y sox los mezcla.
+      local function espeak(variante, salida)
+        return string.format("espeak-ng -v %s%s -s %d -p %d -f %s -w %s",
+          params:string("voz"), variante, rapidez, params:get("tono"),
+          comillas(txt), comillas(salida))
+      end
+      if siseo < 0.02 then
+        cmd = espeak("", crudo)
+      elseif siseo > 0.98 then
+        cmd = espeak("+whisper", crudo)
+      else
+        local normal, susurro = nombre .. ".normal.wav", nombre .. ".susurro.wav"
+        -- el susurro suena más bajo, así que entra con más ganancia
+        cmd = espeak("", normal) .. " && " .. espeak("+whisper", susurro)
+          .. string.format(" && sox -m -v %.2f %s -v %.2f %s %s",
+            1 - siseo, comillas(normal), siseo * 2, comillas(susurro),
+            comillas(crudo))
+      end
+    elseif motor == 2 then
+      cmd = string.format(
+        "flite -voice %s --setf duration_stretch=%.2f --setf f0_shift=%.2f"
+          .. " -f %s -o %s",
+        params:string("voz_flite"), lentitud, tono, comillas(txt), comillas(crudo))
     else
-      local normal, susurro = base .. ".normal.wav", base .. ".susurro.wav"
-      -- el susurro suena más bajo, así que entra con más ganancia
-      cmd = espeak("", normal) .. " && " .. espeak("+whisper", susurro)
-        .. string.format(" && sox -m -v %.2f %s -v %.2f %s %s",
-          1 - siseo, comillas(normal), siseo * 2, comillas(susurro),
-          comillas(crudo))
+      local modelo = DIR_PIPER .. params:string("voz_piper")
+      cmd = string.format("piper --model %s --length_scale %.2f --output_file %s < %s",
+        comillas(modelo), lentitud, comillas(crudo), comillas(txt))
     end
-  elseif motor == 2 then
-    cmd = string.format(
-      "flite -voice %s --setf duration_stretch=%.2f --setf f0_shift=%.2f"
-        .. " -f %s -o %s",
-      params:string("voz_flite"), lentitud, tono, comillas(txt), comillas(crudo))
-  else
-    local modelo = DIR_PIPER .. params:string("voz_piper")
-    cmd = string.format("piper --model %s --length_scale %.2f --output_file %s < %s",
-      comillas(modelo), lentitud, comillas(crudo), comillas(txt))
+    -- 48 kHz para softcut, y "norm" para que todo suene igual de fuerte,
+    -- sea normal o susurrado
+    cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s norm -3",
+      comillas(crudo), comillas(wav))
+    return cmd, wav
   end
-  -- 48 kHz para softcut, y "norm" para que todas las frases suenen
-  -- igual de fuerte, sean normales o susurradas
-  cmd = cmd .. string.format(" && sox -G %s -r 48000 -c 1 %s norm -3",
-    comillas(crudo), comillas(wav))
+
+  local cmd, wav = comando(con_silencios(texto, silencios), base)
+  if not cmd then
+    al_terminar(nil, "no pude escribir el texto")
+    return
+  end
+
+  -- el eco: la última palabra sola, con la misma voz, en su propio .wav
+  local wav_eco = nil
+  local palabra = ultima_palabra(texto)
+  if params:get("eco") > 0 and palabra ~= "" then
+    local cmd_eco
+    cmd_eco, wav_eco = comando(palabra, base .. ".eco")
+    if cmd_eco then cmd = cmd .. " && " .. cmd_eco end
+  end
 
   norns.system_cmd(cmd .. " 2>&1", function()
-    if util.file_exists(wav) then
-      al_terminar(wav)
-    else
+    if not util.file_exists(wav) then
       al_terminar(nil, "falló " .. MOTORES[motor])
+      return
     end
+    if wav_eco and not util.file_exists(wav_eco) then wav_eco = nil end
+    al_terminar(wav, nil, wav_eco)
   end)
 end
 
@@ -791,14 +829,50 @@ local function aplicar_corte()
   for _, v in ipairs(VOCES_SC) do softcut.post_filter_fc(v, fc) end
 end
 
--- carga el .wav en el buffer de softcut y lo reproduce con la voz seca
-local function sonar(wav)
+-- repite la última palabra después de que termina la frase,
+-- cada vez un poco más bajo
+local function ecos(espera, dur_eco)
+  local espacio = params:get("espacio_eco")
+  clock.sleep(espera + espacio)
+  -- la intensidad del eco cambia en cada frase con el azar...
+  local nivel = params:get("eco") * (1 + azar() * params:get("azar_eco"))
+  for i = 1, params:get("repeticiones") do
+    -- ...y en cada repetición con el LFO
+    local este = util.clamp(nivel * (1 + lfo("eco")), 0, 1)
+    softcut.level(VOZ_ECO, este * 0.6 ^ (i - 1))
+    softcut.loop_start(VOZ_ECO, ECO_INICIO)
+    softcut.loop_end(VOZ_ECO, ECO_INICIO + dur_eco)
+    softcut.position(VOZ_ECO, ECO_INICIO)
+    softcut.play(VOZ_ECO, 1)
+    clock.sleep(dur_eco + espacio)
+  end
+  reloj_eco = nil
+end
+
+-- carga el .wav en el buffer de softcut y lo reproduce con la voz seca;
+-- si hay eco, lo carga aparte y lo programa para cuando termine la frase
+local function sonar(wav, wav_eco)
   local _, muestras, sr = audio.file_info(wav)
   if not muestras or muestras == 0 then return end
   local dur = muestras / sr
 
   softcut.buffer_clear_region_channel(1, 0, math.max(dur, dur_frase) + 1)
   softcut.buffer_read_mono(wav, 0, 0, -1, 1, 1)
+
+  -- una frase nueva corta el eco de la anterior
+  if reloj_eco then
+    clock.cancel(reloj_eco)
+    reloj_eco = nil
+  end
+  local dur_eco = 0
+  if wav_eco then
+    local _, m, r = audio.file_info(wav_eco)
+    if m and m > 0 then
+      dur_eco = m / r
+      softcut.buffer_clear_region_channel(1, ECO_INICIO, 10)
+      softcut.buffer_read_mono(wav_eco, 0, ECO_INICIO, -1, 1, 1)
+    end
+  end
 
   clock.run(function()
     clock.sleep(0.1)  -- tiempo para que el archivo termine de cargarse
@@ -812,6 +886,9 @@ local function sonar(wav)
     -- en reversa empieza desde el final
     softcut.position(VOZ_SECA, rate < 0 and dur or 0)
     softcut.play(VOZ_SECA, 1)
+    if dur_eco > 0 then
+      reloj_eco = clock.run(ecos, dur / math.abs(rate), dur_eco)
+    end
   end)
 end
 
@@ -859,11 +936,11 @@ local function decir()
   estado = "pensando..."
   redraw()
 
-  renderizar(frase, function(wav, problema)
+  renderizar(frase, function(wav, problema, wav_eco)
     ocupado = false
     if wav then
       ultimo_wav = wav
-      sonar(wav)
+      sonar(wav, wav_eco)
       estado = auto and "automático" or "K2: otra frase"
     else
       estado = problema
@@ -908,6 +985,9 @@ local function agregar_parametros()
   end)
   params:add_option("mezclar", "mezclar temas", { "no", "sí" }, 1)
   params:add_option("intervalo", "automático cada", INTERVALO_NOMBRES, 4)
+  -- probabilidad de que un turno del modo automático se quede callado
+  params:add_control("pausas", "pausas (auto)",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
 
   params:add_option("motor", "motor de voz", MOTORES, 1)
   params:add_option("voz", "voz eSpeak", VOCES, 2)
@@ -936,6 +1016,17 @@ local function agregar_parametros()
   params:add_control("volumen", "volumen voz",
     controlspec.new(0, 1, "lin", 0, 0.8, ""), formato("%.2f"))
   params:set_action("volumen", function(x) softcut.level(VOZ_SECA, x) end)
+
+  params:add_separator("voxbox_eco", "ECO")
+  -- volumen de la primera repetición; en 0 no hay eco
+  params:add_control("eco", "eco última palabra",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  params:add_number("repeticiones", "repeticiones", 1, 6, 2)
+  params:add_control("espacio_eco", "espacio entre ecos",
+    controlspec.new(0.05, 1.5, "exp", 0, 0.3, "s"), formato("%.2fs"))
+  -- cuánto cambia la intensidad del eco de una frase a otra
+  params:add_control("azar_eco", "azar en eco",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
 
   params:add_separator("voxbox_filtro", "FILTRO")
   params:add_option("filtro", "tipo", FILTROS, 2)
@@ -1032,7 +1123,14 @@ function init()
   clock.run(function()
     while true do
       clock.sync(INTERVALOS[params:get("intervalo")])
-      if auto then decir() end
+      if auto then
+        -- PAUSAS: a veces el turno se queda en silencio
+        if math.random() < params:get("pausas") then
+          estado = "pausa"
+        else
+          decir()
+        end
+      end
     end
   end)
 
