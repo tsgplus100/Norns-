@@ -1,14 +1,25 @@
--- VOXBOX 1.5
+-- VOXBOX 2.0
 -- frases automáticas habladas
--- con filtro, granos y LFO
+-- con filtro, granos y LFO,
+-- y un granulador de samples
+-- de voz que suena a la vez
 --
 -- E1 cambia de página
 -- E2 / E3 los dos parámetros
 --   de esa página
+-- K2 mantenido + K3
+--   cambia de pestaña:
+--   SÍNTESIS <-> SAMPLES
+--
+-- pestaña SÍNTESIS:
 -- K2 decir una frase nueva
 -- K3 modo automático on/off
 --
--- páginas:
+-- pestaña SAMPLES:
+-- K2 cargar un sample
+-- K3 escuchar el sample
+--
+-- páginas de SÍNTESIS:
 -- VOZ     tema / tono
 -- MODO    frases, caracteres
 --         o mezcla / cantidad
@@ -26,6 +37,29 @@
 -- TONO G  tono / variación
 -- LFO     velocidad / profundidad
 -- AUTO    cada cuánto / pausas
+--
+-- páginas de SAMPLES:
+-- SAMPLE  cuál / elección
+-- CARGA   archivo o carpeta /
+--         trocear en pausas
+-- NIVEL   volumen / cuándo suena
+-- GRANO   densidad / tamaño
+-- MOVIM.  avance / dispersión
+-- SÍLABA  sílabas / saltar
+--         silencios
+-- TONO    tono / variación
+-- ESPACIO estéreo / reversa
+--
+-- los samples: cualquier .wav,
+-- .aif o .flac cortado a la
+-- rápida. VOXBOX lo normaliza,
+-- le quita el silencio de los
+-- bordes y busca sus sílabas.
+-- con "trocear en pausas" una
+-- grabación larga se parte en
+-- un sample por frase o palabra.
+-- quedan guardados y vuelven
+-- solos al abrir el script.
 --
 -- más opciones en
 -- PARAMETERS > VOXBOX
@@ -638,7 +672,7 @@ local VOCES_SAM = {
 local VOCES_DECTALK = { "Paul", "Betty", "Harry", "Frank", "Dennis", "Kit",
   "Ursula", "Rita", "Wendy" }
 local LFO_DESTINOS = { "corte", "tamaño", "densidad", "tono granos", "rapidez",
-  "siseo", "eco" }
+  "siseo", "eco", "tono samples" }
 
 -- voces de softcut: la 1 dice la frase tal cual,
 -- de la 2 a la 5 disparan los granos por turnos
@@ -650,7 +684,22 @@ local VOCES_SC = { 1, 2, 3, 4, 5, 6 }
 -- el eco vive en el segundo 100 del buffer, lejos de la frase
 local ECO_INICIO = 100
 
--- E1 elige la página; E2 y E3 cambian sus dos parámetros
+-- los samples viven en el buffer 2, uno detrás de otro.
+-- los granos de samples usan las mismas voces 2 a 5 que los de la frase,
+-- y la voz 6 (la del eco) sirve para escuchar un sample entero
+local BUFFER_SAMPLES = 2
+local BUFFER_MAX = 340      -- segundos que caben en el buffer
+local MAX_SAMPLES = 32
+local MAX_DUR = 30          -- un sample más largo se corta aquí
+local FRAME = 0.01          -- el análisis mide la energía cada 10 ms
+local SAMPLES_DIR = _path.data .. "voxbox/samples/"
+local CORTE_DIR = _path.data .. "voxbox/corte/"
+local EXTENSIONES = { "wav", "aif", "aiff", "flac" }
+
+local PESTANAS = { "SÍNTESIS", "SAMPLES" }
+
+-- E1 elige la página; E2 y E3 cambian sus dos parámetros.
+-- las páginas sin "pestana" son de SÍNTESIS
 local PAGINAS = {
   { nombre = "VOZ",    e2 = "tema",      e3 = "tono" },
   { nombre = "MODO",   e2 = "modo",      e3 = "cantidad" },
@@ -669,7 +718,17 @@ local PAGINAS = {
   { nombre = "TONO G", e2 = "tono_granos", e3 = "variacion" },
   { nombre = "LFO",    e2 = "lfo_vel",   e3 = "lfo_prof" },
   { nombre = "AUTO",   e2 = "intervalo", e3 = "pausas" },
+
+  { nombre = "SAMPLE",  e2 = "sample",     e3 = "s_eleccion", pestana = 2 },
+  { nombre = "CARGA",   e2 = "s_cargar",   e3 = "s_trocear",  pestana = 2 },
+  { nombre = "NIVEL",   e2 = "s_volumen",  e3 = "s_cuando",   pestana = 2 },
+  { nombre = "GRANO",   e2 = "s_densidad", e3 = "s_tamano",   pestana = 2 },
+  { nombre = "MOVIM.",  e2 = "s_avance",   e3 = "s_dispersion", pestana = 2 },
+  { nombre = "SÍLABA",  e2 = "s_silabas",  e3 = "s_saltar",   pestana = 2 },
+  { nombre = "TONO",    e2 = "s_tono",     e3 = "s_variacion", pestana = 2 },
+  { nombre = "ESPACIO", e2 = "s_estereo",  e3 = "s_reversa",  pestana = 2 },
 }
+for _, pg in ipairs(PAGINAS) do pg.pestana = pg.pestana or 1 end
 -- nombres cortos para que quepan abajo en la pantalla
 local ETIQUETAS = {
   tema = "", tono = "tono", corte = "corte", resonancia = "reso",
@@ -682,9 +741,23 @@ local ETIQUETAS = {
   espacio_eco = "esp", azar_eco = "azar",
   variacion = "var",
   silencios = "sil", azar_rapidez = "azar r", azar_silencios = "azar s",
+  sample = "", s_eleccion = "", s_cargar = "", s_trocear = "",
+  s_volumen = "vol", s_cuando = "", s_densidad = "dens", s_tamano = "tam",
+  s_avance = "avance", s_dispersion = "disp", s_silabas = "síl",
+  s_saltar = "saltar", s_tono = "tono", s_variacion = "var",
+  s_estereo = "estéreo", s_reversa = "rev",
 }
 
+local fileselect = require "fileselect"
+
 local pagina = 1
+-- la última página visitada de cada pestaña, para volver a ella
+local pagina_de = { 1, nil }
+for i, pg in ipairs(PAGINAS) do
+  if pg.pestana == 2 and not pagina_de[2] then pagina_de[2] = i end
+end
+local k2_abajo = false    -- K2 mantenido, esperando un K3
+local k2_combo = false    -- ese K2 ya se usó para cambiar de pestaña
 local frase = ""
 local estado = "K2: frase nueva"
 local ocupado = false     -- true mientras eSpeak está generando
@@ -703,6 +776,18 @@ local marcas = {}         -- los últimos granos, para dibujarlos
 local lfo_fase = 0
 local lfo_valor = 0       -- de -1 a 1, ya multiplicado por la profundidad
 local reloj_eco = nil     -- el reloj que está repitiendo la última palabra
+-- cuándo suena la frase, para que los samples la sigan o la esquiven
+local frase_desde, frase_hasta = 0, 0
+
+-- los samples cargados: { nombre, base, inicio, dur, forma, activo, silabas }
+local samples = {}
+local fin_buffer = 0      -- dónde empieza el próximo sample en el buffer 2
+local siguiente_id = 1    -- el número del próximo archivo guardado
+local cargando = false
+local estado_s = "K2: cargar sample"
+local cabeza_s = 0        -- por dónde van leyendo los granos del sample
+local slot_ciclo = 1      -- el sample que suena en elección "ciclo"
+local marcas_s = {}
 
 -- ---------------------------------------------------------------------------
 -- sonido
@@ -934,6 +1019,9 @@ local function ecos(espera, dur_eco)
   for i = 1, params:get("repeticiones") do
     -- ...y en cada repetición con el LFO
     local este = util.clamp(nivel * (1 + lfo("eco")), 0, 1)
+    -- la voz del eco también sirve para escuchar samples (buffer 2)
+    softcut.buffer(VOZ_ECO, 1)
+    softcut.rate(VOZ_ECO, 1)
     softcut.level(VOZ_ECO, este * 0.6 ^ (i - 1))
     softcut.loop_start(VOZ_ECO, ECO_INICIO)
     softcut.loop_end(VOZ_ECO, ECO_INICIO + dur_eco)
@@ -981,6 +1069,9 @@ local function sonar(wav, wav_eco)
     -- en reversa empieza desde el final
     softcut.position(VOZ_SECA, rate < 0 and dur or 0)
     softcut.play(VOZ_SECA, 1)
+    frase_desde = util.time()
+    frase_hasta = params:get("repetir") == 2 and math.huge
+      or frase_desde + dur / math.abs(rate)
     if dur_eco > 0 then
       reloj_eco = clock.run(ecos, dur / math.abs(rate), dur_eco)
     end
@@ -1003,6 +1094,9 @@ local function disparar_grano()
 
   -- el fade de softcut hace de envolvente: el grano entra y sale suave
   softcut.fade_time(v, math.min(tam * 0.3, 0.1))
+  -- la misma voz puede haber tocado antes un grano de sample
+  softcut.buffer(v, 1)
+  softcut.level(v, params:get("granos"))
   softcut.loop_start(v, inicio)
   softcut.loop_end(v, inicio + tam)
   softcut.rate(v, 2 ^ (semi / 12))
@@ -1012,6 +1106,357 @@ local function disparar_grano()
 
   table.insert(marcas, { x = inicio / dur_frase, vida = 1 })
   if #marcas > 16 then table.remove(marcas, 1) end
+end
+
+-- ---------------------------------------------------------------------------
+-- samples de voz
+-- ---------------------------------------------------------------------------
+
+-- lee la energía de un sample (el .env que hace sox: audio a 4 kHz,
+-- 16 bits) y encuentra dónde hay voz y dónde empieza cada sílaba
+local function analizar(ruta_env, dur)
+  local frames = math.max(1, math.floor(dur / FRAME))
+  local env = {}
+  local f = io.open(ruta_env, "rb")
+  if f then
+    local datos = f:read("a")
+    f:close()
+    local n = 40                       -- 10 ms a 4 kHz
+    local formato_frame = "<" .. string.rep("i2", n)
+    local pos = 1
+    while #env < frames and pos + n * 2 - 1 <= #datos do
+      local valores = { string.unpack(formato_frame, datos, pos) }
+      pos = table.remove(valores)      -- string.unpack devuelve al final
+      local suma = 0                   -- la posición siguiente
+      for _, x in ipairs(valores) do suma = suma + x * x end
+      table.insert(env, math.sqrt(suma / n))
+    end
+  end
+  -- sin análisis, todo cuenta como voz y no hay sílabas
+  if #env == 0 then
+    for i = 1, frames do env[i] = 1 end
+  end
+
+  local maximo = 0
+  for _, x in ipairs(env) do maximo = math.max(maximo, x) end
+  if maximo > 0 then
+    for i, x in ipairs(env) do env[i] = x / maximo end
+  end
+
+  -- la energía suavizada (50 ms), para que las sílabas no salgan dobles
+  local suave = {}
+  for i = 1, #env do
+    local suma, cuantos = 0, 0
+    for k = i - 2, i + 2 do
+      if env[k] then suma, cuantos = suma + env[k], cuantos + 1 end
+    end
+    suave[i] = suma / cuantos
+  end
+
+  -- dónde hay voz: lo que no es silencio ni respiración muy suave
+  local activo = {}
+  for i, x in ipairs(suave) do activo[i] = x > 0.06 end
+
+  -- una sílaba es un pico de energía (su vocal), con al menos 80 ms
+  -- desde la anterior. empieza donde la energía empieza a subir hacia ese pico
+  local silabas = {}
+  local ultimo_pico = -100
+  for i = 2, #suave - 1 do
+    local x = suave[i]
+    if x > 0.2 and i - ultimo_pico >= 8 then
+      local es_pico = true
+      for k = i - 6, i + 6 do
+        if suave[k] and suave[k] > x then
+          es_pico = false
+          break
+        end
+      end
+      if es_pico then
+        local inicio = i
+        while inicio > 1 and suave[inicio - 1] <= suave[inicio]
+          and suave[inicio - 1] > x * 0.3 do
+          inicio = inicio - 1
+        end
+        table.insert(silabas, (inicio - 1) * FRAME)
+        ultimo_pico = i
+      end
+    end
+  end
+
+  -- la forma de onda para la pantalla: 128 columnas
+  local forma = {}
+  for c = 1, 128 do
+    local desde = math.floor((c - 1) / 128 * #env) + 1
+    local hasta = math.max(desde, math.floor(c / 128 * #env))
+    local alto = 0
+    for i = desde, hasta do alto = math.max(alto, env[i] or 0) end
+    forma[c] = alto
+  end
+
+  return { forma = forma, activo = activo, silabas = silabas }
+end
+
+-- pone en el buffer 2 un sample ya preparado (base.wav y base.env)
+local function agregar_sample(base)
+  if #samples >= MAX_SAMPLES then return false end
+  local _, muestras, sr = audio.file_info(base .. ".wav")
+  if not muestras or muestras == 0 then return false end
+  local dur = math.min(muestras / sr, MAX_DUR)
+  if fin_buffer + dur > BUFFER_MAX then return false end
+
+  softcut.buffer_read_mono(base .. ".wav", 0, fin_buffer, dur, 1, BUFFER_SAMPLES)
+  local s = analizar(base .. ".env", dur)
+  s.base = base
+  s.nombre = (base:match("[^/]+$"):gsub("^%d+%-", ""))
+  s.inicio = fin_buffer
+  s.dur = dur
+  table.insert(samples, s)
+  -- medio segundo de silencio entre uno y otro, para que los granos
+  -- y su fade no se metan en el sample vecino
+  fin_buffer = fin_buffer + dur + 0.5
+  return true
+end
+
+-- vuelve a cargar todos los samples guardados, en orden
+local function recargar_samples()
+  samples = {}
+  fin_buffer = 0
+  softcut.buffer_clear_channel(BUFFER_SAMPLES)
+  local lista = util.os_capture("ls " .. comillas(SAMPLES_DIR) .. " 2>/dev/null", true)
+  siguiente_id = 1
+  for nombre in lista:gmatch("[^\n]+") do
+    local base = nombre:match("^(.+)%.wav$")
+    if base then
+      agregar_sample(SAMPLES_DIR .. base)
+      local id = tonumber(base:match("^(%d+)%-"))
+      if id then siguiente_id = math.max(siguiente_id, id + 1) end
+    end
+  end
+  slot_ciclo = util.clamp(slot_ciclo, 1, math.max(1, #samples))
+end
+
+-- convierte un archivo cualquiera en uno o varios samples listos:
+-- 48 kHz mono, normalizado y sin silencio en los bordes. con "trocear",
+-- sox lo parte cada vez que encuentra una pausa
+local function preparar(ruta, al_terminar)
+  local todo = CORTE_DIR .. "todo.wav"
+  local sin_bordes = " norm -3 silence 1 0.02 -45d reverse silence 1 0.02 -45d reverse"
+  local cmd = "rm -rf " .. comillas(CORTE_DIR) .. " && mkdir -p " .. comillas(CORTE_DIR)
+    .. " && sox " .. comillas(ruta) .. " -r 48000 -c 1 -b 16 " .. comillas(todo)
+    .. sin_bordes
+  local trocear = params:get("s_trocear") == 2
+  if trocear then
+    cmd = cmd .. string.format(
+      " && sox %s %s silence 1 0.02 -45d 1 %.2f -45d : newfile : restart && rm %s",
+      comillas(todo), comillas(CORTE_DIR .. "p.wav"), params:get("s_pausa"),
+      comillas(todo))
+  else
+    cmd = cmd .. " && mv " .. comillas(todo) .. " " .. comillas(CORTE_DIR .. "p001.wav")
+  end
+  -- la energía de cada pedazo, para encontrar sus sílabas
+  cmd = cmd .. " && for f in " .. comillas(CORTE_DIR) .. "p*.wav; do"
+    .. " sox \"$f\" -t raw -r 4000 -e signed -b 16 -c 1 \"${f%.wav}.env\"; done"
+
+  -- el nombre del sample: el del archivo, sin extensión ni caracteres raros
+  local nombre = ruta:match("([^/]+)$"):gsub("%.[^.]*$", ""):gsub("[^%w_-]", "_"):sub(1, 20)
+
+  norns.system_cmd(cmd .. " 2>&1", function()
+    local lista = util.os_capture("ls " .. comillas(CORTE_DIR) .. " 2>/dev/null", true)
+    local pedazos = {}
+    for archivo in lista:gmatch("[^\n]+") do
+      local base = archivo:match("^(p%d+)%.wav$")
+      if base then table.insert(pedazos, CORTE_DIR .. base) end
+    end
+    local nuevos = 0
+    for i, pedazo in ipairs(pedazos) do
+      local _, muestras, sr = audio.file_info(pedazo .. ".wav")
+      -- los pedacitos de menos de 60 ms son ruido, no voz
+      if muestras and sr and muestras / sr >= 0.06 then
+        local base = SAMPLES_DIR .. string.format("%03d-%s", siguiente_id,
+          #pedazos > 1 and (nombre .. "-" .. i) or nombre)
+        os.rename(pedazo .. ".wav", base .. ".wav")
+        os.rename(pedazo .. ".env", base .. ".env")
+        if agregar_sample(base) then
+          siguiente_id = siguiente_id + 1
+          nuevos = nuevos + 1
+        else
+          os.remove(base .. ".wav")
+          os.remove(base .. ".env")
+        end
+      end
+    end
+    al_terminar(nuevos)
+  end)
+end
+
+-- carga uno o varios archivos, uno detrás de otro
+local function cargar(rutas)
+  if cargando then return end
+  if not hay.sox then
+    estado_s = "falta sox"
+    return
+  end
+  cargando = true
+  local total, i = 0, 0
+  local function siguiente(nuevos)
+    total = total + (nuevos or 0)
+    i = i + 1
+    if i > #rutas or #samples >= MAX_SAMPLES then
+      cargando = false
+      if total == 0 then
+        estado_s = #samples >= MAX_SAMPLES and "no caben más" or "no cargó nada"
+      else
+        estado_s = total == 1 and "1 sample nuevo" or (total .. " samples nuevos")
+        -- muestra el último que llegó, y que suene si estaba en 0
+        params:set("sample", #samples)
+        if params:get("s_volumen") == 0 then params:set("s_volumen", 0.6) end
+      end
+      return
+    end
+    estado_s = #rutas > 1 and string.format("cargando %d/%d", i, #rutas)
+      or "cargando..."
+    preparar(rutas[i], siguiente)
+  end
+  siguiente()
+end
+
+-- K2 en la pestaña SAMPLES: elegir un archivo (o una carpeta)
+local function elegir_archivo()
+  if cargando then return end
+  fileselect.enter(_path.audio, function(ruta)
+    if not ruta or ruta == "cancel" then return end
+    if params:get("s_cargar") == 1 then
+      cargar({ ruta })
+      return
+    end
+    -- carpeta: todos los archivos de audio que estén junto al elegido
+    local carpeta = ruta:match("^(.*/)")
+    local rutas = {}
+    local lista = util.os_capture("ls " .. comillas(carpeta) .. " 2>/dev/null", true)
+    for archivo in lista:gmatch("[^\n]+") do
+      local ext = (archivo:match("%.(%w+)$") or ""):lower()
+      for _, e in ipairs(EXTENSIONES) do
+        if ext == e then table.insert(rutas, carpeta .. archivo) end
+      end
+    end
+    cargar(rutas)
+  end)
+end
+
+-- borra el sample elegido, o todos, y reacomoda el buffer
+local function quitar_samples(todos)
+  if cargando or #samples == 0 then return end
+  local elegidos = todos and samples
+    or { samples[util.clamp(params:get("sample"), 1, #samples)] }
+  for _, s in ipairs(elegidos) do
+    os.remove(s.base .. ".wav")
+    os.remove(s.base .. ".env")
+  end
+  recargar_samples()
+  params:set("sample", util.clamp(params:get("sample"), 1, math.max(1, #samples)))
+  estado_s = #samples == 0 and "K2: cargar sample" or "quitado"
+end
+
+-- el sample que se ve en pantalla y que sigue la cabeza
+local function sample_actual()
+  if #samples == 0 then return nil end
+  if params:get("s_eleccion") == 3 then
+    return util.clamp(slot_ciclo, 1, #samples)
+  end
+  return util.clamp(params:get("sample"), 1, #samples)
+end
+
+-- ¿toca que suenen los granos de samples ahora? pueden sonar siempre,
+-- solo mientras habla la síntesis, o solo en sus silencios
+local function toca_samples()
+  local cuando = params:get("s_cuando")
+  if cuando == 1 then return true end
+  local ahora = util.time()
+  local hablando = ahora >= frase_desde and ahora < frase_hasta
+  return (cuando == 2) == hablando
+end
+
+-- la sílaba que está sonando en el momento t, o una al azar cerca de t
+local function silaba_cerca(s, t, ventana)
+  local previa = s.silabas[#s.silabas]
+  local opciones = {}
+  for _, x in ipairs(s.silabas) do
+    if x <= t then previa = x end
+    if math.abs(x - t) <= ventana then table.insert(opciones, x) end
+  end
+  if ventana > 0 and #opciones > 0 then return opciones[math.random(#opciones)] end
+  return previa
+end
+
+-- desde t, el primer momento en que hay voz (da la vuelta si hace falta)
+local function siguiente_voz(s, t)
+  local frames = #s.activo
+  local i = math.floor(t / FRAME) + 1
+  for k = 0, frames - 1 do
+    local j = (i - 1 + k) % frames + 1
+    if s.activo[j] then return (j - 1) * FRAME end
+  end
+  return t
+end
+
+-- un grano de sample: igual que los de la frase, pero desde el buffer 2,
+-- y pensado para voz: puede caer justo al principio de una sílaba,
+-- saltarse los silencios y sonar al revés
+local function disparar_grano_sample()
+  local n = params:get("s_eleccion") == 2 and math.random(#samples) or sample_actual()
+  local s = samples[n]
+  local v = GRANOS[siguiente_grano]
+  siguiente_grano = siguiente_grano % #GRANOS + 1
+
+  local tam = util.clamp(params:get("s_tamano"), 0.01, s.dur)
+  local cabeza = cabeza_s % s.dur
+  local ventana = params:get("s_dispersion") * s.dur
+  local donde
+  if #s.silabas > 0 and math.random() < params:get("s_silabas") then
+    -- 15 ms antes de la sílaba, para no comerse la consonante
+    donde = silaba_cerca(s, cabeza, ventana) - 0.015
+  else
+    donde = (cabeza + azar() * ventana) % s.dur
+    if params:get("s_saltar") == 2 then donde = siguiente_voz(s, donde) end
+  end
+  donde = util.clamp(donde, 0, math.max(0, s.dur - tam))
+
+  local semi = params:get("s_tono") + lfo("tono samples") * 12
+    + azar() * params:get("s_variacion")
+  local rate = 2 ^ (semi / 12)
+  local al_reves = math.random() < params:get("s_reversa")
+
+  softcut.fade_time(v, math.min(tam * 0.3, 0.1))
+  softcut.buffer(v, BUFFER_SAMPLES)
+  softcut.level(v, params:get("s_volumen"))
+  softcut.loop_start(v, s.inicio + donde)
+  softcut.loop_end(v, s.inicio + donde + tam)
+  softcut.rate(v, al_reves and -rate or rate)
+  softcut.pan(v, azar() * params:get("s_estereo"))
+  softcut.position(v, s.inicio + donde + (al_reves and tam or 0))
+  softcut.play(v, 1)
+
+  table.insert(marcas_s, { sample = n, x = donde / s.dur, vida = 1 })
+  if #marcas_s > 16 then table.remove(marcas_s, 1) end
+end
+
+-- K3 en la pestaña SAMPLES: el sample entero, tal cual, por la voz del eco
+local function escuchar()
+  local n = sample_actual()
+  if not n then return end
+  local s = samples[n]
+  if reloj_eco then
+    clock.cancel(reloj_eco)
+    reloj_eco = nil
+  end
+  softcut.buffer(VOZ_ECO, BUFFER_SAMPLES)
+  softcut.level(VOZ_ECO, params:get("volumen"))
+  softcut.rate(VOZ_ECO, 1)
+  softcut.loop_start(VOZ_ECO, s.inicio)
+  softcut.loop_end(VOZ_ECO, s.inicio + s.dur)
+  softcut.position(VOZ_ECO, s.inicio)
+  softcut.play(VOZ_ECO, 1)
+  estado_s = "escuchando " .. s.nombre
 end
 
 -- ---------------------------------------------------------------------------
@@ -1223,11 +1668,10 @@ local function agregar_parametros()
 
   params:add_separator("voxbox_granos", "GRANOS")
   -- en 0 no se dispara ningún grano
+  -- el volumen se aplica en cada grano, porque las mismas voces
+  -- tocan también los granos de samples
   params:add_control("granos", "volumen granos",
     controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
-  params:set_action("granos", function(x)
-    for _, v in ipairs(GRANOS) do softcut.level(v, x) end
-  end)
   params:add_control("densidad", "granos por segundo",
     controlspec.new(1, 40, "exp", 0, 8, "/s"), formato("%.1f/s"))
   params:add_control("tamano", "tamaño del grano",
@@ -1257,6 +1701,54 @@ local function agregar_parametros()
     controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
   params:set_action("lfo_prof", function() aplicar_corte() end)
 
+  params:add_separator("voxbox_samples", "SAMPLES")
+  -- el número de sample; en pantalla se ve su nombre
+  params:add_number("sample", "sample", 1, MAX_SAMPLES, 1, function(p)
+    local s = samples[p:get()]
+    return s and s.nombre or "-"
+  end)
+  -- fijo: el elegido. azar: uno distinto en cada grano.
+  -- ciclo: pasa al siguiente cada vez que la cabeza termina uno
+  params:add_option("s_eleccion", "elección", { "fijo", "azar", "ciclo" }, 1)
+  params:add_option("s_cargar", "K2 carga", { "un archivo", "la carpeta" }, 1)
+  params:add_option("s_trocear", "trocear", { "no trocear", "en pausas" }, 1)
+  -- cuánto silencio hace falta para cortar al trocear
+  params:add_control("s_pausa", "pausa para trocear",
+    controlspec.new(0.08, 1.5, "exp", 0, 0.25, "s"), formato("%.2fs"))
+  params:add_control("s_volumen", "volumen samples",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  params:add_option("s_cuando", "suenan",
+    { "siempre", "con la frase", "entre frases" }, 1)
+  params:add_control("s_densidad", "granos por segundo",
+    controlspec.new(1, 40, "exp", 0, 6, "/s"), formato("%.1f/s"))
+  params:add_control("s_tamano", "tamaño del grano",
+    controlspec.new(0.02, 1, "exp", 0, 0.18, "s"), function(p)
+      return string.format("%dms", math.floor(p:get() * 1000))
+    end)
+  params:add_control("s_avance", "avance",
+    controlspec.new(-2, 2, "lin", 0.05, 1, "x"), function(p)
+      local x = p:get()
+      return math.abs(x) < 0.01 and "congelado" or string.format("%.2fx", x)
+    end)
+  params:add_control("s_dispersion", "dispersión",
+    controlspec.new(0, 1, "lin", 0, 0.05, ""), formato("%.2f"))
+  -- probabilidad de que un grano empiece justo en una sílaba
+  params:add_control("s_silabas", "sílabas",
+    controlspec.new(0, 1, "lin", 0, 0.5, ""), formato("%.2f"))
+  params:add_option("s_saltar", "saltar silencios", { "no", "sí" }, 2)
+  params:add_number("s_tono", "tono samples", -24, 24, 0, formato("%dst"))
+  params:add_control("s_variacion", "variación de tono",
+    controlspec.new(0, 12, "lin", 0, 0, "st"), formato("%.1fst"))
+  params:add_control("s_estereo", "apertura estéreo",
+    controlspec.new(0, 1, "lin", 0, 0.5, ""), formato("%.2f"))
+  -- probabilidad de que un grano suene al revés
+  params:add_control("s_reversa", "reversa",
+    controlspec.new(0, 1, "lin", 0, 0, ""), formato("%.2f"))
+  params:add_trigger("s_quitar", "quitar sample elegido")
+  params:set_action("s_quitar", function() quitar_samples(false) end)
+  params:add_trigger("s_borrar", "borrar todos los samples")
+  params:set_action("s_borrar", function() quitar_samples(true) end)
+
   params:add_separator("voxbox_guardar", "")
   params:add_trigger("guardar", "guardar última frase")
   params:set_action("guardar", guardar)
@@ -1269,6 +1761,7 @@ end
 function init()
   util.make_dir(DATA_DIR)
   util.make_dir(AUDIO_DIR)
+  util.make_dir(SAMPLES_DIR)
 
   hay.sox = hay_programa("sox")
   for _, programa in ipairs(PROGRAMA_DE_MOTOR) do
@@ -1300,6 +1793,10 @@ function init()
   end
   -- ojo: softcut.reset() deja en cero todas las salidas del filtro;
   -- aplicar_filtro() (desde params:bang) las vuelve a abrir
+
+  -- los samples de la última vez
+  softcut.buffer_clear()
+  recargar_samples()
 
   agregar_parametros()
   params:bang()
@@ -1333,6 +1830,28 @@ function init()
     end
   end)
 
+  -- los granos de samples: su propio reloj, sus propios parámetros
+  clock.run(function()
+    while true do
+      local dt = 1 / util.clamp(params:get("s_densidad"), 0.5, 60)
+      clock.sleep(dt)
+      local n = sample_actual()
+      if n then
+        local dur = samples[n].dur
+        cabeza_s = cabeza_s + params:get("s_avance") * dt
+        if cabeza_s >= dur or cabeza_s < 0 then
+          cabeza_s = cabeza_s % dur
+          if params:get("s_eleccion") == 3 then
+            slot_ciclo = slot_ciclo % #samples + 1
+          end
+        end
+        if params:get("s_volumen") > 0 and toca_samples() then
+          disparar_grano_sample()
+        end
+      end
+    end
+  end)
+
   -- el LFO: una onda seno lenta, 30 veces por segundo
   clock.run(function()
     local dt = 1 / 30
@@ -1344,6 +1863,7 @@ function init()
         aplicar_corte()
       end
       for _, m in ipairs(marcas) do m.vida = m.vida - dt * 1.5 end
+      for _, m in ipairs(marcas_s) do m.vida = m.vida - dt * 1.5 end
     end
   end)
 
@@ -1362,26 +1882,59 @@ local function id_param(x)
   return type(x) == "function" and x() or x
 end
 
+local function mover(id, d)
+  if id == "sample" then
+    -- solo entre los samples que hay cargados
+    params:set("sample", util.clamp(params:get("sample") + d, 1,
+      math.max(1, #samples)))
+  else
+    params:delta(id, d)
+  end
+end
+
+-- E1 recorre todas las páginas: las de SÍNTESIS y después las de SAMPLES
 function enc(n, d)
   if n == 1 then
     pagina = util.clamp(pagina + d, 1, #PAGINAS)
+    pagina_de[PAGINAS[pagina].pestana] = pagina
   elseif n == 2 then
-    params:delta(id_param(PAGINAS[pagina].e2), d)
+    mover(id_param(PAGINAS[pagina].e2), d)
   elseif n == 3 then
-    params:delta(id_param(PAGINAS[pagina].e3), d)
+    mover(id_param(PAGINAS[pagina].e3), d)
   end
   redraw()
 end
 
+local function cambiar_pestana()
+  local otra = 3 - PAGINAS[pagina].pestana
+  pagina = pagina_de[otra]
+end
+
+-- K2 actúa al soltarlo: así, mantenido, puede usarse con K3
+-- para cambiar de pestaña sin decir una frase
 function key(n, z)
-  if z == 0 then return end
+  local pestana = PAGINAS[pagina].pestana
   if n == 2 then
-    decir()
-  elseif n == 3 then
-    auto = not auto
-    estado = auto and "automático" or "K2: frase nueva"
-    redraw()
+    if z == 1 then
+      k2_abajo, k2_combo = true, false
+    else
+      k2_abajo = false
+      if not k2_combo then
+        if pestana == 1 then decir() else elegir_archivo() end
+      end
+    end
+  elseif n == 3 and z == 1 then
+    if k2_abajo then
+      k2_combo = true
+      cambiar_pestana()
+    elseif pestana == 1 then
+      auto = not auto
+      estado = auto and "automático" or "K2: frase nueva"
+    else
+      escuchar()
+    end
   end
+  redraw()
 end
 
 -- parte un texto en líneas que quepan en el ancho de la pantalla
@@ -1407,23 +1960,8 @@ local function texto_param(id)
   return etiqueta == "" and valor or (etiqueta .. " " .. valor)
 end
 
-function redraw()
-  screen.clear()
-  screen.font_face(1)
-  screen.font_size(8)
-
-  -- arriba: la página y el tema
-  local pg = PAGINAS[pagina]
-  screen.level(15)
-  screen.move(0, 7)
-  screen.text(pg.nombre)
-  screen.level(3)
-  screen.text(" " .. pagina .. "/" .. #PAGINAS)
-  screen.move(128, 7)
-  screen.text_right(params:get("mezclar") == 2 and "mezcla"
-    or params:string("tema"))
-
-  -- en medio: la frase, hasta tres líneas
+-- en medio, en la pestaña SÍNTESIS: la frase, hasta tres líneas
+local function dibujar_frase()
   screen.level(10)
   for i, linea in ipairs(partir(frase, 124)) do
     if i > 3 then break end
@@ -1448,6 +1986,91 @@ function redraw()
     screen.rect(math.floor(cabeza / dur_frase * 127), 40, 1, 9)
     screen.fill()
   end
+end
+
+-- en medio, en la pestaña SAMPLES: la forma del sample, sus sílabas,
+-- la cabeza y los granos que van saliendo
+local function dibujar_sample()
+  local n = sample_actual()
+  if not n then
+    screen.level(10)
+    screen.move(64, 26)
+    screen.text_center("sin samples")
+    screen.level(4)
+    screen.move(64, 36)
+    screen.text_center(cargando and "cargando..." or "K2: cargar uno")
+    return
+  end
+  local s = samples[n]
+
+  screen.level(10)
+  screen.move(0, 16)
+  screen.text(s.nombre)
+  screen.level(3)
+  screen.move(128, 16)
+  screen.text_right(string.format("%.1fs %dsíl", s.dur, #s.silabas))
+
+  -- la forma de onda, simétrica alrededor de y = 32
+  screen.level(3)
+  for x = 1, 128 do
+    local alto = math.floor(s.forma[x] * 11 + 0.5)
+    if alto > 0 then
+      screen.move(x - 0.5, 32 - alto)
+      screen.line(x - 0.5, 32 + alto)
+      screen.stroke()
+    end
+  end
+  -- las sílabas: rayitas arriba
+  screen.level(7)
+  for _, t in ipairs(s.silabas) do
+    screen.rect(math.floor(t / s.dur * 127), 19, 1, 2)
+    screen.fill()
+  end
+  -- los granos de este sample
+  for _, m in ipairs(marcas_s) do
+    if m.sample == n and m.vida > 0 then
+      screen.level(math.max(1, math.floor(m.vida * 15)))
+      screen.rect(math.floor(m.x * 126), 30, 2, 4)
+      screen.fill()
+    end
+  end
+  screen.level(15)
+  screen.rect(math.floor(cabeza_s % s.dur / s.dur * 127), 21, 1, 23)
+  screen.fill()
+end
+
+function redraw()
+  screen.clear()
+  screen.font_face(1)
+  screen.font_size(8)
+
+  -- arriba: la página (contada dentro de su pestaña) y el tema o el sample
+  local pg = PAGINAS[pagina]
+  local en_pestana, total = 0, 0
+  for i, otra in ipairs(PAGINAS) do
+    if otra.pestana == pg.pestana then
+      total = total + 1
+      if i <= pagina then en_pestana = total end
+    end
+  end
+  screen.level(15)
+  screen.move(0, 7)
+  screen.text(pg.nombre)
+  screen.level(3)
+  screen.text(" " .. en_pestana .. "/" .. total)
+  screen.move(128, 7)
+  if pg.pestana == 2 then
+    screen.text_right(PESTANAS[2] .. " " .. #samples)
+  else
+    screen.text_right(params:get("mezclar") == 2 and "mezcla"
+      or params:string("tema"))
+  end
+
+  if pg.pestana == 2 then
+    dibujar_sample()
+  else
+    dibujar_frase()
+  end
 
   -- abajo: lo que mueven E2 y E3 en esta página
   screen.level(15)
@@ -1459,7 +2082,7 @@ function redraw()
   -- y el estado
   screen.level(4)
   screen.move(0, 63)
-  screen.text(estado)
+  screen.text(pg.pestana == 2 and estado_s or estado)
   screen.move(128, 63)
   screen.level(auto and 15 or 3)
   screen.text_right(auto and "auto" or "manual")
